@@ -1,97 +1,99 @@
 # -*- coding: utf-8 -*-
-"""Third-order object plus body tuning (xi) and command bandwidth (omega_c)."""
+"""Fixed third-order object, plus the two things the learner controls.
+
+The object never changes:
+
+    G(s) = 1 / ((1 + tau_d s)(1 + tau_1 s)(1 + tau_2 s))
+
+with (tau_d, tau_1, tau_2) = (1.0, 0.1, 0.05) s, i.e. poles at -1, -10, -20.
+
+Co-contraction xi does not change the object. It changes the *coupled* system
+the learner experiences. Following the singular-perturbation reduction in the
+meeting note, raising the damping ratio past 1 separates the time scales by
+
+    rho(xi) = (xi + sqrt(xi^2 - 1))^2      for xi > 1,   else 1,
+
+so the two fast time constants are divided by rho and settle inside a fraction
+of a movement. At xi = 3 (rho ~ 34) the transients are invisible and the
+learner effectively faces the dominant first-order lag alone.
+
+This is the whole point of the design: stiffening buys a *simpler system to
+identify*, and it simultaneously *hides* the very transients that must
+eventually be learned. Those two consequences are what force a sequence.
+"""
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import numpy as np
-from scipy.signal import cont2discrete
+from scipy.signal import lfilter
 
-TAU_D = 1.0
-TAU_1 = 0.1
-TAU_2 = 0.05
-TRUE_POLES = np.array([-1.0 / TAU_D, -1.0 / TAU_1, -1.0 / TAU_2])
+TAU_TRUE = (1.0, 0.1, 0.05)
+TRUE_POLES = np.array([-1.0 / t for t in TAU_TRUE])
+XI_SOFT = 0.7
 
 
-def separation_ratio(xi: float) -> float:
-    """rho(xi) from the overdamped quadratic. Equals 1 at and below xi = 1."""
+def rho(xi: float) -> float:
+    """Overdamped separation ratio. 1 below the critical damping ratio."""
     if xi <= 1.0:
         return 1.0
     return float((xi + np.sqrt(xi * xi - 1.0)) ** 2)
 
 
-def experienced_time_constants(xi: float) -> tuple[float, float, float]:
-    rho = separation_ratio(xi)
-    return TAU_D, TAU_1 / rho, TAU_2 / rho
-
-
-def experienced_poles(xi: float) -> np.ndarray:
-    td, t1, t2 = experienced_time_constants(xi)
-    return np.array([-1.0 / td, -1.0 / t1, -1.0 / t2])
-
-
-def _cascade_ss(taus: tuple[float, float, float]):
+def experienced_taus(taus, xi: float):
+    """Dominant lag is untouched; the fast lags are compressed by rho(xi)."""
+    r = rho(xi)
     td, t1, t2 = taus
-    A = np.array(
-        [
-            [-1.0 / td, 0.0, 0.0],
-            [1.0 / t1, -1.0 / t1, 0.0],
-            [0.0, 1.0 / t2, -1.0 / t2],
-        ],
-        dtype=float,
-    )
-    B = np.array([[1.0 / td], [0.0], [0.0]], dtype=float)
-    C = np.array([[0.0, 0.0, 1.0]], dtype=float)
-    D = np.array([[0.0]], dtype=float)
-    return A, B, C, D
+    return (td, t1 / r, t2 / r)
 
 
-def true_continuous_ss():
-    return _cascade_ss((TAU_D, TAU_1, TAU_2))
+def cascade(taus, u: np.ndarray, dt: float) -> np.ndarray:
+    """Zero-order-hold cascade of first-order lags. A tau of 0 is a pass-through."""
+    y = np.asarray(u, dtype=float)
+    for tau in taus:
+        if tau <= 1e-6:
+            continue
+        a = float(np.exp(-dt / tau))
+        y = lfilter([0.0, 1.0 - a], [1.0, -a], y)
+    return y
 
 
-@dataclass
-class CoupledPlant:
-    dt: float
-    xi: float = 0.7
-    omega_c: float = 40.0
-
-    def __post_init__(self) -> None:
-        self._rebuild()
-
-    def set_tuning(self, xi: float, omega_c: float) -> None:
-        self.xi = float(xi)
-        self.omega_c = float(omega_c)
-        self._rebuild()
-
-    def _rebuild(self) -> None:
-        A, B, C, D = _cascade_ss(experienced_time_constants(self.xi))
-        Ad, Bd, Cd, Dd, _ = cont2discrete((A, B, C, D), self.dt, method="zoh")
-        self.Ad = np.asarray(Ad, dtype=float)
-        self.Bd = np.asarray(Bd, dtype=float).reshape(3, 1)
-        self.Cd = np.asarray(Cd, dtype=float).reshape(1, 3)
-        self.Dd = float(np.asarray(Dd).reshape(()))
-        a = float(np.exp(-self.omega_c * self.dt))
-        self.filt_a = a
-        self.filt_b = 1.0 - a
-
-    @property
-    def poles(self) -> np.ndarray:
-        return experienced_poles(self.xi)
-
-    def reset(self):
-        return np.zeros(3), 0.0
-
-    def step(self, x: np.ndarray, u_filt: float, u_cmd: float):
-        u_next = self.filt_a * u_filt + self.filt_b * u_cmd
-        x_next = (self.Ad @ x.reshape(3, 1) + self.Bd * u_next).ravel()
-        y = float((self.Cd @ x_next).ravel()[0]) + self.Dd * u_next
-        return x_next, u_next, y
+def impulse(taus, dt: float, n: int) -> np.ndarray:
+    u = np.zeros(n)
+    u[0] = 1.0 / dt
+    return cascade(taus, u, dt) * dt
 
 
-def min_jerk_reach(t: np.ndarray, t_move: float, y_final: float = 1.0) -> np.ndarray:
-    r = np.empty_like(t, dtype=float)
+def model_error(taus_hat, dt: float = 0.01, n: int = 400) -> float:
+    """Relative impulse-response error of a model against the true object."""
+    y_true = impulse(TAU_TRUE, dt, n)
+    y_hat = impulse(taus_hat, dt, n)
+    denom = float(np.sqrt(np.mean(y_true**2)) + 1e-12)
+    return float(np.sqrt(np.mean((y_true - y_hat) ** 2)) / denom)
+
+
+def min_jerk(t: np.ndarray, t_move: float, amp: float = 1.0) -> np.ndarray:
     s = np.clip(t / t_move, 0.0, 1.0)
-    r[:] = y_final * (10.0 * s**3 - 15.0 * s**4 + 6.0 * s**5)
-    r[t >= t_move] = y_final
-    return r
+    return amp * (10.0 * s**3 - 15.0 * s**4 + 6.0 * s**5)
+
+
+def band_limited_noise(n: int, dt: float, t_move: float, rng) -> np.ndarray:
+    """Exploration a limb can actually produce: no energy above the movement band.
+
+    This is the single most important modelling choice in the study. Voluntary
+    movement is smooth, so the only way to put energy near the 10 and 20 rad/s
+    poles is to move fast. An impulsive or white probe would excite every mode
+    at once and the sample-complexity argument behind the hypothesis would be
+    void -- there would be no penalty for trying to identify all three modes
+    from trial one.
+    """
+    a = float(np.exp(-dt / (t_move / 3.0)))
+    w = rng.normal(size=n)
+    y = lfilter([1.0 - a], [1.0, -a], w)
+    return y / (float(np.std(y)) + 1e-12)
+
+
+def reach_reference(n: int, dt: float, t_move: float) -> np.ndarray:
+    """One out-and-back reach. Shorter t_move means more high-frequency content."""
+    t = np.arange(n) * dt
+    out = min_jerk(t, t_move)
+    back = min_jerk(np.clip(t - (t_move + 0.35), 0.0, None), t_move, amp=-1.0)
+    return out + back

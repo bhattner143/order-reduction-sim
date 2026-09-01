@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from order_reduction.diagnose import report, sweep
 from order_reduction.experiment import run_experiment
 from order_reduction.plot import plot_mechanism, plot_proposal_figure, write_snippet
 from order_reduction.stats import summarise
@@ -41,17 +42,27 @@ def main() -> None:
     plot_mechanism(logs, summary, out / "mechanism.png")
     write_snippet(summary, out / "proposal_snippet.tex")
 
-    print("\nTrials to criterion (mean +/- SE):")
+    print("\nTrials to criterion (median | mean +/- SE):")
     for c in logs:
         print(
-            f"  {c}: {summary['ttc_mean'][c]:6.2f} +/- {summary['ttc_se'][c]:4.2f}"
+            f"  {c}: {summary['ttc_median'][c]:5.1f} | {summary['ttc_mean'][c]:6.2f}"
+            f" +/- {summary['ttc_se'][c]:4.2f}"
             f"   reached {100 * summary['reached_frac'][c]:5.1f}%"
-            f"   asymp RMSE {summary['asymp_rmse'][c]:.3f}"
+            f"   asymptotic error {summary['asymp_err'][c]:.3f}"
+            f"   failed trials {summary['n_failed'][c]:5.1f}"
         )
-    print("\nHolm-corrected Mann-Whitney (S2 faster than ...):")
+    print("\nHolm-corrected Mann-Whitney, two-sided:")
     for t in summary["tests"]:
-        print(f"  {t['contrast']:10s}  p={t['p']:.3g}  p_Holm={t['p_holm']:.3g}  {t['stars']}")
+        print(
+            f"  {t['contrast']:10s}  median diff {t['median_diff']:+6.1f}"
+            f"  ({t['direction']})  p_Holm={t['p_holm']:.3g}  {t['stars']}"
+        )
+
+    print("\nIdentifiability of the full third-order fit vs co-contraction:")
+    print(report(sweep()))
+
     print(f"\nWrote {out / 'proposal_figure.pdf'}")
+    print(f"Wrote {out / 'mechanism.pdf'}")
     print(f"Wrote {out / 'proposal_snippet.tex'}")
 
 
