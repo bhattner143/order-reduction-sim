@@ -56,6 +56,31 @@ def cascade(taus, u: np.ndarray, dt: float) -> np.ndarray:
     return y
 
 
+def cascade_exact(taus, u: np.ndarray, dt: float) -> np.ndarray:
+    """Cascade of first-order lags without the one-sample delay per stage.
+
+    `cascade` above discretises each lag as y[k] = a y[k-1] + (1-a) u[k-1],
+    which adds one sample of pure delay per stage. That is harmless when the
+    time constants are large but it puts a floor under any measurement of
+    reduced-order bias: three stages contribute 3*dt of delay that a
+    first-order fit absorbs as extra time constant, so the measured bias
+    cannot fall below about 0.02 s however hard the learner co-contracts.
+
+    This form, y[k] = a y[k-1] + (1-a) u[k], has no such floor. A stage whose
+    time constant is far below dt collapses to a pass-through, which is what
+    "the transient has already settled" should mean. Learner 1 keeps the old
+    convention so its published numbers stay reproducible; everything from the
+    bias analysis onwards uses this one.
+    """
+    y = np.asarray(u, dtype=float)
+    for tau in taus:
+        if tau <= 1e-6:
+            continue
+        a = float(np.exp(-dt / tau))
+        y = lfilter([1.0 - a], [1.0, -a], y)
+    return y
+
+
 def impulse(taus, dt: float, n: int) -> np.ndarray:
     u = np.zeros(n)
     u[0] = 1.0 / dt

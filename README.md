@@ -117,11 +117,109 @@ and the transients are not, so any learner that stays stiff is provably stuck
 at first order.* Panel 1 of `outputs/curriculum/mechanism.pdf` is that claim,
 and it needs no curriculum to make it.
 
+---
+
+# Learner 2: the misspecification bias, and a learner that carries uncertainty
+
+Run `./scripts/run_learner2.sh --trials 60 --seeds 20`.
+
+Learner 1 is kept exactly as it was, because its failure is what identifies the
+defect. That defect was **not** the plant or the schedule. It was that learner 1
+was *correctly specified*: it always fitted the true three-lag structure, so its
+only error was variance, and variance is not what co-contraction acts on.
+
+## The bias law
+
+A learner that fits **fewer** modes than the world has is biased, and the bias
+has a closed form. Expanding the object at low frequency,
+`G(s) = 1 - (tau_d + tau_1 + tau_2)s + O(s^2)`, and matching a first-order model
+`1/(1 + tau_hat s)`:
+
+    tau_hat(xi) = tau_d + (tau_1 + tau_2)/rho(xi)
+
+Three lags in a row feel like one lag equal to their sum, so a reduced-order
+learner is off by exactly the time constants it omits — and co-contraction
+divides that error by `rho`. Least squares confirms it:
+
+| xi | rho | fitted bias | closed form |
+|---|---|---|---|
+| 0.7 | 1.0 | 0.180 s | 0.150 s |
+| 1.2 | 3.5 | 0.040 s | 0.043 s |
+| 2.0 | 13.9 | 0.005 s | 0.011 s |
+| 4.0 | 62 | 0.0006 s | 0.0024 s |
+
+This is the claim worth making. Co-contraction is not a statistical aid to
+identification; it is what makes a **low-order model of a high-order world
+correct**. Unlike a variance argument, it does not go away with more trials.
+
+## The learner
+
+State is `[log tau_d, log tau_1, log tau_2, w_1, w_2]`, updated by an iterated
+EKF in information form, with anisotropic process noise — small on the dominant
+mode, larger on the transients. That is the two-timescale split: a slow,
+well-retained estimate and a fast, forgetful one.
+
+Each transient enters through a **participation weight**,
+`blend(tau, w): x -> (1-w)x + w*lag(tau)x`, with an ARD prior shrinking the
+weights to zero, so `n_eff = 1 + w_1 + w_2` comes off the posterior instead of
+being imposed. Nothing tells the learner what order to use.
+
+The participation weight is load-bearing. Encoding "this mode is off" as
+`tau -> 0` also drives the mode's sensitivity to zero, so a pruned mode becomes
+invisible to the data and **pruning is irreversible** — a learner that switches
+a mode off while stiff can never switch it back on when it relaxes, however
+plainly the soft data show it. That was observed before it was diagnosed.
+
+Relaxation is earned, not scheduled: K2 and K4 advance when the posterior
+standard deviation on `log tau_d` drops below a threshold.
+
+## Findings
+
+| | trials | final error | peak &#124;tau_d error&#124; | n_eff | failed |
+|---|---|---|---|---|---|
+| K1 deep end | 5 | 0.031 | 0.691 s | 2.18 | 4.0 |
+| K2 confidence-gated relaxation | 19 | 0.030 | 0.087 s | 2.18 | 0.0 |
+| K3 stiff throughout | never | 0.404 | 0.013 s | 1.00 | 0.0 |
+| K4 bandwidth only | 4 | 0.030 | 0.026 s | 2.19 | 1.1 |
+| K5 random tuning | 35 | 0.076 | 0.040 s | 1.92 | 0.7 |
+
+**K3 prunes itself to n_eff = 1.00** and holds an unbiased dominant estimate
+(+0.0014 s) while plateauing at 0.404. Staying stiff leaves you provably at
+first order, and here the learner *discovers* that rather than being told —
+which is what makes it evidence rather than a definition.
+
+**K2 holds n_eff at 1.0 through the stiff stage and recruits to 2.18 the moment
+co-contraction falls.** Progressive recruitment emerges from evidence.
+
+**K1 reaches the same asymptote but swings through a peak dominant-mode error of
+0.691 s**, eight times K2's, and loses four trials to failure against K2's zero.
+
+Still not confirmed, and not to be claimed: K2 is *not* faster than K1 in trials
+to criterion, and K4 (bandwidth alone) is fastest of all. Trials to criterion
+does not separate these schedules and has been dropped as the headline metric.
+`n_eff` asymptotes near 2.2 rather than 3 because the third mode does not pay
+for itself in this excitation — the ARD prior behaving correctly.
+
+## Next
+
+- Close the loop: a controller designed from the posterior, with co-contraction
+  setting the gain margin. Instability during learning is the effect, not an
+  obstacle to it.
+- Sweep the cost of a failed trial; if recovery is expensive the K1/K2 ordering
+  may reverse on trial count too.
+- Measure retention of each estimate across a change in co-contraction.
+- Test the bias law against WP1 data: does a participant's residual dominant
+  time constant track `1/rho` of their own measured co-contraction?
+
 ## Layout
 
-    order_reduction/plant.py       object, rho(xi), band-limited exploration
-    order_reduction/learner.py     gray-box gradient learner, order unlocking
-    order_reduction/experiment.py  S1-S5 trial loop, surprise-driven failure
-    order_reduction/diagnose.py    curvature spectrum vs behavioural cost
-    order_reduction/stats.py       Holm-corrected two-sided tests
-    order_reduction/plot.py        proposal_figure.pdf, mechanism.pdf
+    order_reduction/plant.py           object, rho(xi), band-limited exploration
+    order_reduction/learner.py         learner 1, gray-box gradient, order unlocking
+    order_reduction/experiment.py      S1-S5 trial loop, surprise-driven failure
+    order_reduction/diagnose.py        curvature spectrum vs behavioural cost
+    order_reduction/stats.py           Holm-corrected two-sided tests
+    order_reduction/plot.py            proposal_figure.pdf, mechanism.pdf
+    order_reduction/bias.py            the (tau_1+tau_2)/rho bias law
+    order_reduction/kalman_learner.py  learner 2, two-timescale EKF with ARD
+    order_reduction/experiment2.py     K1-K5, confidence-gated relaxation
+    order_reduction/plot2.py           bias_law.pdf, learner2.pdf
