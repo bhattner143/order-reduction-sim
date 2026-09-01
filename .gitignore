@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.Python
+.venv/
+venv/
+.DS_Store
+outputs/_scratch/
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+outputs/_smoke/
