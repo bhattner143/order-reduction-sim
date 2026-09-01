@@ -1,0 +1,903 @@
+% ============================================================================
+%  Complete theory guide for order-reduction-sim
+%  From mass-spring-damper physics to Learner 1 and Learner 2
+%  Written for a non-specialist reader. Every symbol is defined.
+%
+%  Compile (from this folder):
+%      pdflatex theory.tex
+%      pdflatex theory.tex    % run twice for table of contents and links
+% ============================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[left=2.2cm,right=2.2cm,top=2cm,bottom=2cm]{geometry}
+\usepackage{amsmath,amssymb,amsfonts,mathtools}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage[most]{tcolorbox}
+\usepackage[colorlinks=true,linkcolor=blue!60!black,citecolor=teal!60!black,
+            urlcolor=teal!60!black,breaklinks=true,bookmarksnumbered=true]{hyperref}
+\usepackage[nameinlink,capitalise,noabbrev]{cleveref}
+
+\definecolor{ink}{HTML}{1B365D}
+\definecolor{wash}{HTML}{E8EEF4}
+\definecolor{examplewash}{HTML}{FFF8E7}
+\definecolor{warnwash}{HTML}{F7E9EC}
+\definecolor{gowash}{HTML}{E7F1EA}
+
+% ---- reader boxes -----------------------------------------------------------
+\newtcolorbox{howto}[1]{breakable,enhanced,colback=wash,colframe=ink,
+  fonttitle=\bfseries,coltitle=white,title={#1},left=5pt,right=5pt}
+\newtcolorbox{examplebox}[1]{breakable,enhanced,colback=examplewash,
+  colframe=orange!70!black,fonttitle=\bfseries,title={Lay example: #1},
+  left=5pt,right=5pt}
+\newtcolorbox{resultbox}[1]{breakable,enhanced,colback=gowash,colframe=teal!60!black,
+  fonttitle=\bfseries,title={#1},left=5pt,right=5pt}
+\newtcolorbox{warnbox}[1]{breakable,enhanced,colback=warnwash,colframe=red!60!black,
+  fonttitle=\bfseries,title={#1},left=5pt,right=5pt}
+\newtcolorbox{techbox}[1]{breakable,enhanced,colback=white,colframe=ink,
+  fonttitle=\bfseries,title={Plain-language guide: #1},left=5pt,right=5pt}
+
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\dt}{\Delta t}
+\newcommand{\surprise}{\text{surprise}}
+\newcommand{\neff}{n_{\mathrm{eff}}}
+\DeclareMathOperator{\diag}{diag}
+
+\title{\textbf{Order reduction by co-contraction}\\[4pt]
+  \large A complete theory guide for \texttt{order-reduction-sim}}
+\author{Working document for the Royal Society URF proposal\\
+  \small Repository: \texttt{order-reduction-sim/report/theory.tex}}
+\date{September 2026}
+
+\begin{document}
+\maketitle
+
+\begin{howto}{How to read this document (interactive)}
+This PDF is \textbf{hyperlinked}. Click any blue section name in the
+\hyperref[sec:notation]{Notation table (\S\ref{sec:notation})} or in the
+\hyperref[sec:toc]{table of contents} to jump there.
+
+\textbf{Suggested path for a first read:}
+\begin{enumerate}[nosep]
+\item \S\ref{sec:story} --- the cup-and-arm story in one page.
+\item \S\ref{sec:msd}--\S\ref{sec:rho} --- where $\rho(\xi)$ comes from.
+\item \S\ref{sec:bias} --- the bias law (the main finding).
+\item \S\ref{sec:learner2} --- Learner~2 and what it discovered.
+\item \S\ref{sec:conclusions} --- what we conclude and what we do \emph{not} claim.
+\end{enumerate}
+
+Green boxes are confirmed results. Red boxes are refuted claims or limits.
+Yellow boxes are everyday examples.
+\end{howto}
+
+\tableofcontents
+\label{sec:toc}
+\newpage
+
+% =============================================================================
+\section{The story in one page}
+\label{sec:story}
+% =============================================================================
+
+You hold a cup of coffee and learn to move it without spilling. The cup has its
+own physics (weight, wobble, slosh). Your arm has physics too (stiffness,
+damping). Together they form one \textbf{coupled system}.
+
+Thrishanth Nanayakkara's idea, developed after the July 2026 meeting, is:
+
+\begin{quote}
+When the coupled system is \textbf{high order} (many ways to wobble), the brain
+may \textbf{stiffen the arm} first. Stiffening pushes the fast wobbles so far
+into the past that, during one reach, you mostly feel the \textbf{slow,
+dominant} response. You learn that slow part safely. Then you \textbf{relax}
+and learn the fast parts on top.
+\end{quote}
+
+The simulation in \texttt{order-reduction-sim} tests this idea with two
+different computer learners. Both use the same cup and the same five tuning
+schedules; they differ in \emph{how} they learn.
+
+\begin{examplebox}{Cup of coffee}
+\textbf{Soft arm, fast reach:} the coffee sloshes, the cup wobbles, you feel
+many things at once. If your mental model is wrong, the movement fails (spill).
+
+\textbf{Stiff arm, slow reach:} you squeeze hard. Slosh dies in milliseconds.
+During your 0.8\,s reach you mostly feel ``how heavy/sluggish is this cup?''
+--- one main lag. Safer, simpler, but you cannot yet learn the slosh.
+
+\textbf{Then relax:} once you know the main lag, you soften the arm and move
+faster. The slosh reappears in what you feel. Now you can learn it --- but only
+if your coarse model is already good enough that the reach does not fail.
+\end{examplebox}
+
+% =============================================================================
+\section{Complete notation table}
+\label{sec:notation}
+% =============================================================================
+
+Every symbol used in this document and in the code is listed here. Click any
+\textbf{Symbol} entry's description to jump to the section where it is defined
+in context.
+
+\small
+\begin{longtable}{@{}p{2.4cm}p{1.6cm}p{9.8cm}@{}}
+\toprule
+\textbf{Symbol} & \textbf{Units} & \textbf{Meaning} \\
+\midrule
+\endhead
+$x(t)$ & m & Position of the coupled hand--object along one axis. \\
+$F(t)$ & N & Force applied (your muscle command). \\
+$M$ & kg & Effective inertia (mass of arm + object). \\
+$B$ & N\,s/m & Damping (friction + muscle viscosity). \emph{You increase this by co-contracting.} \\
+$K$ & N/m & Stiffness (muscle tone + object stiffness). \emph{You increase this too.} \\
+$\xi$ & --- & \textbf{Damping ratio} (co-contraction level in the simulation). \\
+$\omega_n$ & rad/s & Natural frequency, $\sqrt{K/M}$. \\
+$p_d$ & 1/s & \textbf{Dominant (slow) pole} --- how sluggish the system feels. \\
+$p_f$ & 1/s & \textbf{Fast (transient) pole} --- how quickly wobbles die. \\
+$\rho(\xi)$ & --- & \textbf{Separation ratio} $|p_f|/|p_d|$ when $\xi>1$. Grows rapidly with stiffness. \\
+$s$ & 1/s & Laplace variable (frequency domain). \\
+$G(s)$ & --- & Transfer function: output per unit input in frequency domain. \\
+$\tau_d,\tau_1,\tau_2$ & s & \textbf{Time constants} of the three-lag object model (slow, medium, fast). \\
+$\hat\tau_d,\hat\tau_1,\hat\tau_2$ & s & Learner's \textbf{estimates} of those time constants. \\
+$u(t)$ & --- & Command signal sent to the limb (reference reach + exploration). \\
+$y(t)$ & --- & Felt response (position or force trace). \\
+$\hat y(t)$ & --- & Learner's \textbf{prediction} of what it should have felt. \\
+$\xi$ & --- & Co-contraction; same symbol as damping ratio in the coupled model. \\
+$\Delta t$ or $\dt$ & s & Sample interval ($0.01$\,s in code). \\
+$t_{\mathrm{move}}$ & s & Duration of one reach segment (controls movement speed). \\
+$\sigma$ & --- & Sensor / output noise standard deviation. \\
+$\surprise$ & --- & $\max_t|y(t)-\hat y(t)|$; largest prediction mismatch in a trial. \\
+$\mathrm{S\_BASE}$ & --- & Failure threshold scale ($0.15$ in code). \\
+$n_{\mathrm{unlocked}}$ & --- & How many time constants Learner~1 is allowed to fit (1, 2, or 3). \\
+$w_1,w_2$ & --- & \textbf{Participation weights} (Learner~2): how active each transient mode is ($0$--$1$). \\
+$\neff$ & --- & \textbf{Effective order} $=1+w_1+w_2$ (Learner~2). \\
+$q$ & --- & State vector in log-parameters + weights (Learner~2). \\
+$P$ & --- & Covariance matrix: how uncertain the learner is. \\
+$Q$ & --- & Process noise covariance: how much beliefs drift per trial. \\
+$R$ & --- & Measurement noise variance in the filter update. \\
+$H$ or $J$ & --- & Jacobian: sensitivity of prediction to each parameter. \\
+$\alpha_i$ & --- & ARD precision (penalty) on weight $w_i$. \\
+$\kappa(\Phi)$ & --- & Condition number of the identification matrix (hard vs easy to learn). \\
+\bottomrule
+\end{longtable}
+\normalsize
+
+% =============================================================================
+\section{Part I --- The second-order mass--spring--damper}
+\label{sec:msd}
+% =============================================================================
+
+\subsection{The physical equation}
+
+Along one movement axis, the coupled arm and object are modelled as a
+\textbf{mass} pulled by a \textbf{spring} and slowed by a \textbf{dashpot}
+(damper):
+\begin{equation}
+\boxed{\; M\ddot x + B\dot x + K x = F(t)\;}
+\label{eq:msd}
+\end{equation}
+
+\begin{itemize}[nosep]
+\item $M\ddot x$ --- inertia resists \emph{acceleration} (``hard to get moving'').
+\item $B\dot x$ --- damping resists \emph{velocity} (``motion is slowed, wobbles die'').
+\item $Kx$ --- stiffness pulls back toward rest (``rubber band'').
+\item $F(t)$ --- your muscle force.
+\end{itemize}
+
+\begin{examplebox}{Mass--spring--damper}
+Push a shopping trolley. $M$ is the trolley mass. $K$ is how stiffly you
+hold the handle (and any elastic in the object). $B$ is friction in the wheels
+and how much you resist the handle moving. Co-contraction in the arm increases
+both $B$ and $K$ --- you grip tighter and resist motion more.
+\end{examplebox}
+
+\subsection{Laplace transform and transfer function}
+
+Take the Laplace transform of \eqref{eq:msd} (zero initial conditions):
+\[
+Ms^2 X(s) + Bs X(s) + K X(s) = F(s)
+\]
+Solve for the ratio $X(s)/F(s)$:
+\begin{equation}
+G(s) = \frac{X(s)}{F(s)} = \frac{1}{Ms^2 + Bs + K}
+\label{eq:secondorderG}
+\end{equation}
+This $G(s)$ is the \textbf{transfer function}: it tells you how each frequency
+in $F$ is amplified or delayed in $x$.
+
+\subsection{Natural frequency and damping ratio}
+
+Define:
+\begin{align}
+\omega_n &= \sqrt{\frac{K}{M}} \quad &&\text{(natural frequency, rad/s)} \label{eq:omegan}\\
+\xi &= \frac{B}{2\sqrt{MK}} \quad &&\text{(damping ratio, dimensionless)} \label{eq:xi}
+\end{align}
+
+\begin{examplebox}{What $\xi$ means}
+\begin{itemize}[nosep]
+\item $\xi<1$: underdamped --- oscillates before settling (bouncy).
+\item $\xi=1$: critically damped --- returns to rest as fast as possible without overshoot.
+\item $\xi>1$: overdamped --- no oscillation; two real exponential decays stacked.
+\end{itemize}
+Co-contraction in our simulation is mapped to \textbf{raising $\xi$ past 1}.
+\end{examplebox}
+
+\subsection{The two poles}
+
+The denominator $Ms^2+Bs+K=0$ has roots (poles):
+\begin{equation}
+p_{\pm} = -\omega_n\bigl(\xi \pm \sqrt{\xi^2-1}\bigr)
+\label{eq:poles}
+\end{equation}
+
+For $\xi>1$ both roots are real and negative. Write:
+\begin{align}
+p_d &\approx -\frac{K}{B} &&\text{(dominant, \textbf{slow} pole)} \label{eq:pd}\\
+p_f &\approx -\frac{B}{M} &&\text{(fast, \textbf{transient} pole)} \label{eq:pf}
+\end{align}
+
+\begin{examplebox}{Two poles = two time scales}
+After a push, the response is roughly a sum of two decays:
+\[
+x(t) \approx A_d e^{p_d t} + A_f e^{p_f t}
+\]
+Because $|p_f|\gg|p_d|$, the fast term $e^{p_f t}$ dies quickly; the slow term
+ lingers. That slow term is what you ``feel'' during a normal reach.
+\end{examplebox}
+
+% =============================================================================
+\section{Part II --- Time-scale separation and $\rho(\xi)$}
+\label{sec:rho}
+% =============================================================================
+
+\subsection{Separation ratio}
+
+Define the \textbf{separation ratio}:
+\begin{equation}
+\rho(\xi) = \frac{|p_f|}{|p_d|}
+\label{eq:rho_def}
+\end{equation}
+
+For $\xi>1$, substituting \eqref{eq:pd}--\eqref{eq:pf} and using
+\eqref{eq:omegan}--\eqref{eq:xi}, one obtains the \textbf{closed form} used
+everywhere in the code (\texttt{plant.rho}):
+\begin{equation}
+\boxed{\;\rho(\xi) = \bigl(\xi + \sqrt{\xi^2-1}\bigr)^2 \quad\text{for }\xi>1,
+\qquad \rho(\xi)=1 \text{ for }\xi\le 1\;}
+\label{eq:rho}
+\end{equation}
+
+\begin{examplebox}{Numbers for $\rho(\xi)$}
+\begin{center}
+\begin{tabular}{@{}rrr@{}}
+\toprule
+$\xi$ & $\rho(\xi)$ & Plain English \\
+\midrule
+0.7 & 1.0 & Soft: modes not separated ($\xi<1$ in strict MSD, but simulation uses $\rho=1$). \\
+1.2 & 3.5 & Fast mode 3.5$\times$ faster than slow. \\
+2.0 & 13.9 & Strong separation. \\
+3.0 & 34.0 & Very stiff: transients finish in $\sim$1/34 of the slow time. \\
+4.0 & 62.0 & Extreme stiffening. \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{examplebox}
+
+\subsection{Singular perturbation: the reduced first-order plant}
+
+When $\rho\gg 1$, the fast mode settles in a time $\tau_f=1/|p_f|$ that is
+negligible compared with the movement duration $T$. Standard
+\textbf{singular perturbation} replaces the fast mode by its quasi-steady
+state and yields a \textbf{first-order} reduced model:
+\begin{equation}
+\boxed{\;\tau_d \dot x + x = \frac{1}{K}F,
+\qquad \tau_d = \frac{B}{K}\;}
+\label{eq:reduced}
+\end{equation}
+
+\begin{examplebox}{Reduced model}
+While very stiff, the coupled system \emph{behaves during one reach} like a
+single lag $\tau_d$: push $\Rightarrow$ response ramps up with time constant
+$\tau_d$. The fast wobble happened already --- you did not see it. The cup did
+not change; your arm \textbf{filtered} the experience.
+\end{examplebox}
+
+% =============================================================================
+\section{Part III --- The third-order object in the simulation}
+\label{sec:plant}
+% =============================================================================
+
+The code does not simulate \eqref{eq:msd} and the object separately on every
+time step. It uses a \textbf{phenomenological stand-in} that captures the
+\emph{outcome} of coupling: time-scale separation on a fixed object.
+
+\subsection{Object transfer function}
+
+The \textbf{object alone} (the cup) is modelled as three first-order lags in
+series:
+\begin{equation}
+\boxed{\; G(s) = \frac{1}{(1+\tau_d s)(1+\tau_1 s)(1+\tau_2 s)}\;}
+\label{eq:thirdorder}
+\end{equation}
+
+True values in the repository (\texttt{TAU\_TRUE}):
+\[
+\tau_d = 1.0\,\text{s},\quad \tau_1 = 0.1\,\text{s},\quad \tau_2 = 0.05\,\text{s}
+\]
+Poles at $s=-1$, $-10$, $-20$\,rad/s.
+
+\begin{examplebox}{Three lags in a row}
+Think of three filters in series:
+\begin{enumerate}[nosep]
+\item Slow filter ($\tau_d$): main heaviness.
+\item Medium filter ($\tau_1$): first wobble.
+\item Fast filter ($\tau_2$): second wobble.
+\end{enumerate}
+Your command passes through all three; what you feel is the output of the chain.
+\end{examplebox}
+
+\subsection{What co-contraction changes}
+
+Co-contraction $\xi$ does \textbf{not} change \eqref{eq:thirdorder}. It changes
+what you \textbf{experience} because your arm filters the signal:
+\begin{equation}
+(\tau_d,\ \tau_1,\ \tau_2)_{\text{felt}}
+= \left(\tau_d,\ \frac{\tau_1}{\rho(\xi)},\ \frac{\tau_2}{\rho(\xi)}\right)
+\label{eq:felt}
+\end{equation}
+
+At $\xi=3$, $\rho\approx34$:
+\[
+\tau_{1,\text{felt}} \approx 0.003\,\text{s},\quad
+\tau_{2,\text{felt}} \approx 0.0015\,\text{s}
+\]
+During a 0.8\,s reach these are invisible; you feel only $\tau_d=1$\,s.
+
+\subsection{Discrete-time simulation}
+
+The code advances time with step $\dt=0.01$\,s. Each first-order lag with time
+constant $\tau$ uses the difference equation (\texttt{cascade\_exact}):
+\begin{equation}
+y[k] = a\, y[k-1] + (1-a)\, u[k],
+\qquad a = e^{-\dt/\tau}
+\label{eq:lagdisc}
+\end{equation}
+
+Learner~1 uses an older variant (\texttt{cascade}) with one-sample delay per
+stage; bias analysis uses \texttt{cascade\_exact} so stiff limiting bias is not
+masked by discretisation artefact.
+
+\subsection{Movement and exploration}
+
+Each trial command is:
+\begin{equation}
+u(t) = u_{\mathrm{ref}}(t) + u_{\mathrm{explore}}(t)
+\label{eq:command}
+\end{equation}
+
+\begin{itemize}[nosep]
+\item $u_{\mathrm{ref}}$: smooth out-and-back \textbf{minimum-jerk reach}
+  (\texttt{reach\_reference}), duration $t_{\mathrm{move}}$.
+\item $u_{\mathrm{explore}}$: \textbf{band-limited noise} (\texttt{band\_limited\_noise}) --- wiggles your arm can actually produce. \emph{Not white noise.}
+\end{itemize}
+
+\begin{examplebox}{Why band-limited exploration matters}
+White noise contains all frequencies, so it would excite every mode at once.
+Then there is no penalty for trying to identify all three lags from trial~1,
+and the sample-complexity story collapses. Real reaches are smooth; fast modes
+need \textbf{fast movement} to show up.
+\end{examplebox}
+
+Felt output with noise:
+\begin{equation}
+y(t) = \text{cascade}_\text{exact}\bigl(\text{felt}(\tau,\xi), u\bigr) + \text{noise}
+\label{eq:output}
+\end{equation}
+
+% =============================================================================
+\section{Part IV --- Trial failure (surprise)}
+\label{sec:failure}
+% =============================================================================
+
+Thrish: ``If stabilisation is not there the ball goes out, the task fails, there
+is no learning.'' The code models this as:
+\begin{align}
+\surprise &= \max_t \bigl|y(t)-\hat y(t)\bigr| \label{eq:surprise}\\
+\text{tolerance} &= \mathrm{S\_BASE}\,\frac{\xi}{\xi_{\mathrm{soft}}},
+\quad \xi_{\mathrm{soft}}=0.7 \label{eq:tolerance}
+\end{align}
+
+If $\surprise>\text{tolerance}$ the trial \textbf{fails} at the first crossing;
+only data \textbf{before} failure are used for learning (if enough samples remain).
+
+\begin{examplebox}{Failure}
+Soft arm ($\xi=0.7$): tolerance $\approx 0.15$. Small prediction errors fail the trial.
+
+Stiff arm ($\xi=3$): tolerance $\approx 0.64$. Same wrong model may survive.
+
+So stiffness buys \textbf{safety while wrong}, not magic identification speed.
+\end{examplebox}
+
+% =============================================================================
+\section{Part V --- The bias law (central finding)}
+\label{sec:bias}
+% =============================================================================
+
+\subsection{Low-frequency expansion}
+
+Expand \eqref{eq:thirdorder} for small $s$ (slow movements):
+\begin{equation}
+G(s) = \frac{1}{(1+\tau_d s)(1+\tau_1 s)(1+\tau_2 s)}
+= 1 - (\tau_d+\tau_1+\tau_2)s + \mathcal O(s^2)
+\label{eq:expand}
+\end{equation}
+
+A \textbf{first-order learner} uses $\hat G(s)=1/(1+\hat\tau s)=1-\hat\tau s+\cdots$.
+Matching the linear term in $s$:
+\begin{equation}
+\boxed{\;\hat\tau = \tau_d + \tau_1 + \tau_2\;}
+\label{eq:bias_soft}
+\end{equation}
+
+Bias on the dominant time constant when fitting one lag to a three-lag world:
+\begin{equation}
+\mathrm{bias} = \hat\tau_d - \tau_d \approx \tau_1+\tau_2 = 0.15\,\text{s}
+\label{eq:bias_amount}
+\end{equation}
+
+\subsection{Effect of co-contraction}
+
+Under stiffening, fast lags in the \emph{felt} signal are divided by $\rho(\xi)$:
+\begin{equation}
+\boxed{\;
+\hat\tau(\xi) = \tau_d + \frac{\tau_1+\tau_2}{\rho(\xi)},
+\qquad
+\mathrm{bias}(\xi) = \frac{\tau_1+\tau_2}{\rho(\xi)}
+\;}
+\label{eq:bias_law}
+\end{equation}
+
+\begin{resultbox}{Measured in \texttt{bias.py} (12 reaches per $\xi$, least squares)}
+\begin{center}
+\begin{tabular}{@{}rrrr@{}}
+\toprule
+$\xi$ & $\rho$ & fitted bias (s) & predicted bias (s) \\
+\midrule
+0.7 & 1.0 & 0.180 & 0.150 \\
+1.2 & 3.5 & 0.040 & 0.043 \\
+2.0 & 13.9 & 0.005 & 0.011 \\
+3.0 & 34.0 & 0.001 & 0.004 \\
+4.0 & 62.0 & 0.0006 & 0.0024 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{resultbox}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\linewidth]{../outputs/learner2/bias_law.pdf}
+  \caption{\textbf{Bias law.} Left: bias in $\hat\tau_d$ vs $\xi$ (data vs
+    $(\tau_1+\tau_2)/\rho(\xi)$). Right: fitted $\hat\tau_d$ approaches true
+    $\tau_d=1$\,s as $\xi$ increases.}
+  \label{fig:bias}
+\end{figure}
+
+\begin{examplebox}{Bias law}
+You think the cup has one time constant. Soft arm: you measure $\approx1.18$\,s
+(sum of all three). Stiff arm ($\xi=4$): you measure $\approx1.0006$\,s, almost
+the true $1.0$\,s. Co-contraction did not change the cup --- it stopped the fast
+parts from polluting your \textbf{simple} estimate.
+\end{examplebox}
+
+% =============================================================================
+\section{Part VI --- Learner 1 (gradient descent, order unlocked by hand)}
+\label{sec:learner1}
+% =============================================================================
+
+\subsection{What it believes}
+
+Learner~1 (\texttt{learner.py}, \texttt{experiment.py}) always knows the
+structure is three lags. It estimates $\hat\tau_d,\hat\tau_1,\hat\tau_2$ but
+only updates the first $n_{\mathrm{unlocked}}$ of them; the rest are fixed at
+$0$ (pass-through).
+
+Initial guesses: $\hat\tau=(0.30,\,0.03,\,0.015)$ s (wrong on purpose).
+
+\subsection{Prediction}
+
+Given command $u$ and stiffness $\xi$:
+\begin{equation}
+\hat y(t) = \text{cascade}\bigl(\text{felt}(\hat\tau,\xi), u\bigr)
+\label{eq:pred1}
+\end{equation}
+
+\subsection{Learning rule}
+
+Keep the last 3 trials. Stack residuals $r = y-\hat y$. Cost
+$\mathcal C=\frac12\sum r^2$. Parameters stored as $q=\log\tau$. Each trial,
+take 12 steps of gradient descent:
+\begin{equation}
+q \leftarrow q - \eta\,\frac{J^\top r}{m},
+\qquad J_{tk}=\frac{\partial r_t}{\partial q_k}
+\label{eq:gd}
+\end{equation}
+with learning rate $\eta=3$.
+
+\begin{techbox}{Gradient descent in one sentence}
+Compute which direction in parameter space would reduce prediction error; take
+a fixed-size step that way; repeat. Slow when the problem is
+\textbf{ill-conditioned} (some directions barely change the output but look
+different in parameter space).
+\end{techbox}
+
+\subsection{Conditions S1--S5}
+
+\begin{center}
+\small
+\begin{tabular}{@{}llp{6.5cm}@{}}
+\toprule
+\textbf{Code} & \textbf{Tuning schedule} & \textbf{What is imposed} \\
+\midrule
+S1 & soft, fast, 3 modes from start & deep end \\
+S2 & $\xi:3\to1.3\to0.7$, slow$\to$fast, unlock $1\to2\to3$ & Thrish curriculum \\
+S3 & stiff throughout, 1 mode only & never learns transients (by rule) \\
+S4 & soft, speed staged, unlock $1\to2\to3$ & bandwidth channel only \\
+S5 & random $\xi$ per trial & control \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Results (20 seeds, 80 trials)}
+
+\begin{warnbox}{Learner~1 refuted the ``curriculum learns faster'' claim}
+\begin{center}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+ & median trials to criterion & reached & final error & failed trials \\
+\midrule
+S1 deep end & 47 & 100\% & 0.043 & 10.4 \\
+S2 curriculum & 80 & 55\% & 0.105 & 0.0 \\
+S3 stiff forever & --- & 0\% & 0.439 & 0.0 \\
+\bottomrule
+\end{tabular}
+\end{center}
+S2 was \textbf{33 trials slower} than S1 ($p=1.6\times10^{-7}$). Curriculum won
+on \textbf{safety} (zero failures), not speed.
+\end{warnbox}
+
+Two diagnostic facts (\texttt{diagnose.py}):
+\begin{enumerate}[nosep]
+\item $\kappa(\Phi)$ for the full third-order fit rises from $\sim5.5\times10^3$
+  (soft) to $\sim10^{16}$ (stiff): stiffening destroys identifiability of
+  transients in the \emph{full} model.
+\item Directions that are hardest to learn also change behaviour least (28$\times$
+  cheaper in impulse response for 5500$\times$ slower curvature): sample-complexity
+  bounds on parameters do not imply behavioural advantage.
+\end{enumerate}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\linewidth]{../outputs/curriculum/mechanism.pdf}
+  \caption{\textbf{Learner~1 diagnostics.} Stiffening destroys full-model
+    identifiability; ill-conditioned directions are behaviourally cheap; curriculum
+    reduces failed trials.}
+  \label{fig:mech1}
+\end{figure}
+
+% =============================================================================
+\section{Part VII --- Learner 2 (two-timescale EKF + ARD)}
+\label{sec:learner2}
+% =============================================================================
+
+Learner~2 fixes two defects of Learner~1:
+\begin{enumerate}[nosep]
+\item \textbf{Misspecification:} Learner~1 always used three lags when unlocked,
+  so it could not exhibit the bias law \eqref{eq:bias_law}.
+\item \textbf{Uncertainty:} Learner~1 hard-locked modes; Learner~2 must show
+  order reduction \emph{emerging} from data, and must not random-walk on
+  unobservable modes.
+\end{enumerate}
+
+\subsection{State vector}
+
+\begin{equation}
+q = \bigl[\log\hat\tau_d,\ \log\hat\tau_1,\ \log\hat\tau_2,\ w_1,\ w_2\bigr]^\top
+\label{eq:state2}
+\end{equation}
+
+$w_1,w_2\in[0,1.2]$ are \textbf{participation weights}: how much of each
+transient lag is active in the internal model.
+
+\subsection{Blend dynamics (why not just set $\tau=0$?)}
+
+Each transient stage applies:
+\begin{equation}
+\mathrm{blend}(\tau,w)[x] = (1-w)\,x + w\cdot\mathrm{lag}(\tau)[x]
+\label{eq:blend}
+\end{equation}
+
+\begin{itemize}[nosep]
+\item $w=1$: full lag with time constant $\tau$.
+\item $w=0$: pass-through (mode ``off'' but sensitivity to $w$ remains).
+\end{itemize}
+
+Full prediction chain (\texttt{kalman\_learner.\_h}):
+\begin{align}
+x_0 &= \mathrm{lag}(\hat\tau_d)[u] \nonumber\\
+x_1 &= \mathrm{blend}(\hat\tau_1/\rho(\xi), w_1)[x_0] \nonumber\\
+\hat y &= \mathrm{blend}(\hat\tau_2/\rho(\xi), w_2)[x_1]
+\label{eq:chain2}
+\end{align}
+
+\begin{examplebox}{Volume knobs vs deleting a mode}
+Wrong approach: ``mode off'' $=$ set $\tau_2=0$. Then the model's output does
+not depend on $\tau_2$; the gradient is zero; you can never turn the mode back
+on when you relax.
+
+Right approach: ``mode off'' $=$ $w_2=0$. Output unchanged, but $\partial\hat
+y/\partial w_2\neq0$. When soft data arrive, $w_2$ can rise again.
+\end{examplebox}
+
+\subsection{Effective order}
+
+\begin{equation}
+\boxed{\;\neff = 1 + w_1 + w_2\;}
+\label{eq:neff}
+\end{equation}
+
+Roughly: ``how many modes are currently paying for themselves in the model?''
+Not imposed --- read from the posterior weights.
+
+% ---------------------------------------------------------------------------
+\subsection{Extended Kalman Filter (EKF) --- full plain-language guide}
+\label{sec:ekf}
+% ---------------------------------------------------------------------------
+
+\begin{techbox}{Kalman filter}
+You hold a \textbf{belief} (best guess $\hat q$) and an \textbf{uncertainty}
+(covariance $P$). Each trial:
+\begin{enumerate}[nosep]
+\item \textbf{Predict:} allow belief to drift ($P\leftarrow P+Q$).
+\item \textbf{Update:} compare prediction to data; move belief toward what
+  explains data; shrink uncertainty in directions the data constrain.
+\end{enumerate}
+If a parameter is not observable this trial, its uncertainty does not shrink
+--- you ``know you don't know.''
+\end{techbox}
+
+\textbf{Measurement model:} $\hat y = h(q,u,\xi)$ via \eqref{eq:chain2} (nonlinear).
+
+Linearise around current $q$:
+\begin{equation}
+e = y - h(q),\qquad H = \left.\frac{\partial h}{\partial q}\right|_{q}
+\label{eq:lin}
+\end{equation}
+
+\textbf{Information-form update} (what the code implements each trial, 3
+iterated refinements):
+\begin{align}
+P_\text{pred}^{-1} &= P^{-1} + Q^{-1} \label{eq:inf_pred}\\
+A &= P_\text{pred}^{-1} + \frac{H^\top H}{R} + \diag(\alpha) \label{eq:inf_A}\\
+P_\text{post} &= A^{-1} \label{eq:inf_post}\\
+q &\leftarrow q + P_\text{post}\left(\frac{H^\top e}{R} - \alpha(q-q_\text{target}) - P_\text{pred}^{-1}(q-q_\text{pred})\right)
+\label{eq:inf_update}
+\end{align}
+
+Symbols:
+\begin{itemize}[nosep]
+\item $Q$ --- process noise: how much you allow beliefs to drift between trials
+  (small on $\log\hat\tau_d$, larger on transients and weights).
+\item $R$ --- measurement variance; inflated to $\max(R_\text{std}^2, \mathrm{mean}(e^2))$
+  early so the filter is not overconfident while the model is still wrong.
+\item $\alpha$ --- ARD penalties (next section).
+\end{itemize}
+
+\begin{examplebox}{EKF}
+Day~1: you guess cup time constant 0.3\,s, very unsure ($P$ large). You reach,
+feel sluggish response. Filter moves estimate toward 0.8\,s and reduces
+uncertainty on $\log\hat\tau_d$. Fast modes stiffened away: columns of $H$ for
+$w_1,w_2$ near zero $\Rightarrow$ those uncertainties barely shrink $\Rightarrow$
+you do not pretend to have learned them.
+\end{examplebox}
+
+% ---------------------------------------------------------------------------
+\subsection{ARD --- Automatic Relevance Determination}
+\label{sec:ard}
+% ---------------------------------------------------------------------------
+
+\begin{techbox}{ARD in plain language}
+Each participation weight $w_i$ has a penalty $\alpha_i$ pulling it toward
+$0$ (``this wobble probably does not matter''). After each update:
+\begin{equation}
+\gamma_i = 1 - \alpha_i P_{ii}, \qquad
+\alpha_i \leftarrow \frac{\gamma_i}{\max(w_i^2,\varepsilon)}
+\label{eq:ard}
+\end{equation}
+If the data do not support mode~$i$, $P_{ii}$ stays large, $\alpha_i$ stays
+moderate, and $w_i$ is shrunk. If soft fast data strongly need mode~$i$,
+$w_i$ grows and stays.
+\end{techbox}
+
+This is how $\neff$ drops toward 1 while stiff and rises after relaxation
+without anyone typing ``unlock mode~2 now.''
+
+\subsection{Two timescales}
+
+Process noise diagonal (rough magnitudes):
+\[
+Q = \diag(10^{-5},\,2\times10^{-3},\,2\times10^{-3},\,2\times10^{-3},\,2\times10^{-3})
+\]
+Dominant $\log\hat\tau_d$ drifts slowly (stable memory). Weights and fast
+$\tau$'s drift faster (forgetful channel).
+
+\subsection{Conditions K1--K5}
+
+Same schedules as S1--S5 except:
+\begin{itemize}[nosep]
+\item \textbf{No hand unlock} --- all three $\tau$'s and both $w$'s always exist.
+\item K2/K4 advance stiffness/speed when $\mathrm{sd}(\log\hat\tau_d)<0.04$
+  (confident on dominant mode).
+\end{itemize}
+
+\subsection{Results (20 seeds, 60 trials)}
+
+\begin{resultbox}{Learner~2 confirms mechanism; does not confirm speed claim}
+\begin{center}
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+ & trials & final error & peak $|\hat\tau_d-\tau_d|$ & $\neff$ & failed \\
+\midrule
+K1 deep end & 5 & 0.031 & 0.691\,s & 2.18 & 4.0 \\
+K2 confidence-gated & 19 & 0.030 & 0.087\,s & 2.18 & 0.0 \\
+K3 stiff forever & --- & 0.404 & 0.013\,s & 1.00 & 0.0 \\
+K4 bandwidth only & 4 & 0.030 & 0.026\,s & 2.19 & 1.1 \\
+K5 random & 35 & 0.076 & 0.040\,s & 1.92 & 0.7 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{resultbox}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\linewidth]{../outputs/learner2/learner2.pdf}
+  \caption{\textbf{Learner~2.} Left: $\neff$ over trials (K2 holds at 1.0 while
+    stiff, then recruits). Centre: peak bias in $\hat\tau_d$. Right: risk vs peak
+    bias across schedules.}
+  \label{fig:learner2}
+\end{figure}
+
+\begin{examplebox}{Reading K2 vs K1}
+Both end with similar final error ($\sim$0.03) and $\neff\approx2.2$. K1 gets
+there in $\sim$5 trials but passes through $\hat\tau_d$ wrong by up to
+$\sim$0.7\,s and fails $\sim$4 trials. K2 takes $\sim$19 trials but peak bias
+is $\sim$0.09\,s and \textbf{zero failures}. The curriculum is a \textbf{safer
+path}, not a shorter one.
+\end{examplebox}
+
+% =============================================================================
+\section{Part VIII --- Scoring metrics (every formula)}
+\label{sec:metrics}
+% =============================================================================
+
+\textbf{Relative impulse error} (how wrong is the learned object model?):
+\begin{equation}
+\mathrm{err} = \frac{\|y_{\mathrm{imp}}-\hat y_{\mathrm{imp}}\|_2}{\|y_{\mathrm{imp}}\|_2}
+\label{eq:imperr}
+\end{equation}
+
+\textbf{Trials to criterion:} first trial where $\mathrm{err}<0.10$ for 3
+consecutive trials.
+
+\textbf{Condition number} (Learner~1 diagnostics):
+\begin{equation}
+\kappa(\Phi) = \frac{\lambda_{\max}(H^\top H)}{\lambda_{\min}(H^\top H)}
+\label{eq:kappa}
+\end{equation}
+
+Large $\kappa$: some parameter directions are nearly invisible in the data.
+
+% =============================================================================
+\section{Part IX --- Conclusions and discussion}
+\label{sec:conclusions}
+% =============================================================================
+
+\subsection{What we conclude}
+
+\begin{enumerate}
+\item \textbf{Co-contraction manufactures time-scale separation} through
+  $\rho(\xi)$ \eqref{eq:rho}, matching the mass--spring--damper story
+  \eqref{eq:msd}--\eqref{eq:reduced}.
+
+\item \textbf{The precise benefit for a low-order learner is bias reduction}
+  \eqref{eq:bias_law}, not generic ``fewer parameters = fewer trials.'' Stiffening
+  divides misspecification bias by $\rho$. This is measurable in people.
+
+\item \textbf{Progressive order recruitment can emerge} (Learner~2 K2): $\neff$
+  holds near 1 while stiff, rises when co-contraction falls and data expose
+  transients.
+
+\item \textbf{Staying stiff forever leaves you at first order} (K3): $\neff=1$,
+  unbiased $\hat\tau_d$, plateau error $\approx0.40$ --- discovered, not coded.
+
+\item \textbf{Curriculum reduces risk, not trial count} in these simulations:
+  K2/S2 have zero failed trials; deep-end schedules fail more while wrong.
+
+\item \textbf{Humans starting stiff is rational} if the objective is ``do not
+  lose trials to catastrophic failure while building a coarse model,'' not
+  ``minimise trial count on a correctly specified full-order estimator.''
+\end{enumerate}
+
+\subsection{What we do \emph{not} conclude}
+
+\begin{warnbox}{Do not claim these in the proposal}
+\begin{itemize}[nosep]
+\item ``S2/K2 reaches criterion in fewer trials than S1/K1'' --- \textbf{false}
+  in both learners for the reported metrics.
+\item ``Sample complexity inequality implies faster behavioural learning'' ---
+  refuted for Learner~1 (ill-conditioned directions are behaviourally cheap).
+\item ``Bandwidth staging alone (K4) is worse than full curriculum'' --- K4 is
+  among the fastest schedules in Learner~2.
+\item ``Learners always recruit all three modes'' --- $\neff\approx2.2$ because
+  the third mode often does not pay for itself under band-limited excitation.
+\end{itemize}
+\end{warnbox}
+
+\subsection{Recommended claim for the URF four-pager}
+
+\begin{quote}
+\emph{A learner that treats the coupled system as lower order than it truly is
+inherits a bias set by the neglected transients. Co-contraction divides that
+bias by the separation ratio $\rho(\xi)$, yielding an unbiased estimate of the
+dominant mode while temporarily suppressing effective order. A uncertainty-aware
+learner exhibits progressive recruitment when co-contraction relaxes, reaching
+the same asymptotic model as an unstiffened learner but with substantially lower
+peak error in the dominant mode and fewer failed trials.}
+\end{quote}
+
+\subsection{Open next steps (not yet simulated)}
+
+\begin{itemize}[nosep]
+\item Close the loop with a certainty-equivalent controller (instability during
+  learning is part of the phenomenon).
+\item Sweep cost of failed trials (recovery delay).
+\item Test $\hat\tau_d$ bias vs EMG-derived $\xi$ in WP1 participants.
+\end{itemize}
+
+% =============================================================================
+\section{Appendix --- Code map}
+\label{sec:code}
+% =============================================================================
+
+\begin{center}
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{File} & \textbf{Role} \\
+\midrule
+\texttt{order\_reduction/plant.py} & Object, $\rho(\xi)$, cascades, reach, exploration \\
+\texttt{order\_reduction/learner.py} & Learner~1: gradient descent \\
+\texttt{order\_reduction/experiment.py} & S1--S5 trial loop \\
+\texttt{order\_reduction/diagnose.py} & $\kappa(\Phi)$ and behavioural cost \\
+\texttt{order\_reduction/bias.py} & Bias law verification \\
+\texttt{order\_reduction/kalman\_learner.py} & Learner~2: EKF + ARD \\
+\texttt{order\_reduction/experiment2.py} & K1--K5 trial loop \\
+\texttt{scripts/run\_curriculum.sh} & Run Learner~1 figures \\
+\texttt{scripts/run\_learner2.sh} & Run Learner~2 figures \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vfill
+\hrule
+\small
+\textit{Document generated to accompany \texttt{order-reduction-sim}. Recompile
+after code changes; re-run simulations to refresh figures in
+\texttt{outputs/curriculum/} and \texttt{outputs/learner2/}.}
+
+\end{document}
