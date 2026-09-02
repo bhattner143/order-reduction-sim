@@ -138,7 +138,7 @@ has a closed form. Expanding the object at low frequency,
     tau_hat(xi) = tau_d + (tau_1 + tau_2)/rho(xi)
 
 Three lags in a row feel like one lag equal to their sum, so a reduced-order
-learner is off by exactly the time constants it omits — and co-contraction
+learner is off by exactly the time constants it omits -- and co-contraction
 divides that error by `rho`. Least squares confirms it:
 
 | xi | rho | fitted bias | closed form |
@@ -155,7 +155,7 @@ correct**. Unlike a variance argument, it does not go away with more trials.
 ## The learner
 
 State is `[log tau_d, log tau_1, log tau_2, w_1, w_2]`, updated by an iterated
-EKF in information form, with anisotropic process noise — small on the dominant
+EKF in information form, with anisotropic process noise -- small on the dominant
 mode, larger on the transients. That is the two-timescale split: a slow,
 well-retained estimate and a fast, forgetful one.
 
@@ -166,7 +166,7 @@ being imposed. Nothing tells the learner what order to use.
 
 The participation weight is load-bearing. Encoding "this mode is off" as
 `tau -> 0` also drives the mode's sensitivity to zero, so a pruned mode becomes
-invisible to the data and **pruning is irreversible** — a learner that switches
+invisible to the data and **pruning is irreversible** -- a learner that switches
 a mode off while stiff can never switch it back on when it relaxes, however
 plainly the soft data show it. That was observed before it was diagnosed.
 
@@ -185,7 +185,7 @@ standard deviation on `log tau_d` drops below a threshold.
 
 **K3 prunes itself to n_eff = 1.00** and holds an unbiased dominant estimate
 (+0.0014 s) while plateauing at 0.404. Staying stiff leaves you provably at
-first order, and here the learner *discovers* that rather than being told —
+first order, and here the learner *discovers* that rather than being told --
 which is what makes it evidence rather than a definition.
 
 **K2 holds n_eff at 1.0 through the stiff stage and recruits to 2.18 the moment
@@ -198,7 +198,7 @@ Still not confirmed, and not to be claimed: K2 is *not* faster than K1 in trials
 to criterion, and K4 (bandwidth alone) is fastest of all. Trials to criterion
 does not separate these schedules and has been dropped as the headline metric.
 `n_eff` asymptotes near 2.2 rather than 3 because the third mode does not pay
-for itself in this excitation — the ARD prior behaving correctly.
+for itself in this excitation -- the ARD prior behaving correctly.
 
 ## Next
 
@@ -223,3 +223,147 @@ for itself in this excitation — the ARD prior behaving correctly.
     order_reduction/kalman_learner.py  learner 2, two-timescale EKF with ARD
     order_reduction/experiment2.py     K1-K5, confidence-gated relaxation
     order_reduction/plot2.py           bias_law.pdf, learner2.pdf
+    order_reduction/slosh.py           lag + complex-pole slosh, plant inverse
+    order_reduction/slosh_learner.py   learner 3, EKF on (tau_d, wn, zeta, w)
+    order_reduction/experiment3.py     C1-C5, open vs cautious plant-inverse
+    order_reduction/plot3.py           slosh_bias_law.pdf, learner3.pdf
+
+---
+
+# Learner 3: slosh object, no task model
+
+Run `./scripts/run_learner3.sh --trials 60 --seeds 20`.
+
+Learner 1 and 2 keep the three real-lag cup. Learner 3 replaces the two fast
+lags with a lightly damped resonance, because coffee sloshes:
+
+    G(s) = 1/(1 + tau_d s) * wn^2 / (s^2 + 2 zeta wn s + wn^2)
+
+with `(tau_d, wn, zeta) = (1.0 s, 10 rad/s, 0.12)`. Co-contraction still
+compresses only the fast part: `wn_felt = wn * rho(xi)`. The learner is the
+same two-timescale EKF, now over `[log tau_d, log wn, log zeta, w]`.
+
+**Nothing here is a model of the task.** The min-jerk reach is the same goal
+already used as an open-loop command. Scoring is object impulse error, bias
+on `tau_d`, `n_eff`, and failed trials. Tracking error is logged and is never
+the criterion.
+
+Closed-loop conditions (C4, C5) build the command from the current *plant*
+belief: a regularised inverse of the felt slosh, mixed cautiously with the
+reach. Authority grows with the slosh weight and shrinks with uncertainty, so
+a mode that has not been recruited is not inverted. A wrong `wn` puts the
+lead at the wrong frequency and corrupts later data. That is the information
+change; it is not a controller designed from a task cost.
+
+| | command | stiffness / speed |
+|---|---|---|
+| C1 | open (reach + explore) | soft, fast |
+| C2 | open | confidence-gated curriculum |
+| C3 | open | stiff throughout |
+| C4 | cautious plant inverse | soft, fast |
+| C5 | cautious plant inverse | confidence-gated curriculum |
+
+## Verification pass, and four defects it found
+
+The first version of this learner was audited numerically rather than by
+eye. Four things were wrong; all are fixed, and the fixes changed the
+numbers. Recording them because three are the same class of mistake the
+earlier learners were criticised for.
+
+**1. The resonance was switched off by an `if`, not compressed.** At
+`dt = 0.01` s a felt slosh at `xi = 3` sits near 340 rad/s, which the grid
+cannot represent, so the original code passed the signal straight through
+above a threshold. That threshold fell at a *different* `xi` for the plant
+than for the learner, because their `wn` differ; it put a cliff in the loss
+surface; and it made `dh/d log wn` **exactly zero** (measured 0.000e+00 at
+`xi = 3`) rather than merely small. C3's "it never learns the frequency" was
+therefore a branch, not a discovery, which is precisely the hand-coding that
+Learner 1's mode-locking was rejected for. Fixed by integrating the
+resonance on an adaptive sub-grid and decimating. The Jacobian now decays
+smoothly (3.0e-1, 4.7e-2, 9.7e-3, 3.6e-3, 2.1e-3 at `xi` = 0.7, 1.2, 2.0,
+3.0, 4.0) and is never exactly zero.
+
+**2. The decimation offset was wrong.** Taking `y_fine[os-1::os]` reads one
+sub-step early and biases the low-frequency gain; `y_fine[::os]` is correct.
+Checked against the analytic `2 zeta / wn`, the corrected version now agrees
+to five decimals at every `wn` tested.
+
+**3. A 5 ms discretisation floor swamped the effect.** Holding the command
+across a sample adds `dt/2` of pure delay, which a first-order fit absorbs
+as extra time constant. At `dt = 0.01` s that floor is 5 ms while the
+predicted slosh bias at `xi = 3` is 0.7 ms, so the 1/rho law was
+unmeasurable. Same trap that `cascade` vs `cascade_exact` documents for the
+three-lag plant, one order worse here. The bias sweep now runs at
+`dt = 5e-4`.
+
+**4. The bias law needs a slow probe, and a fast probe inverted its sign.**
+`tau_hat = tau_d + 2 zeta / wn` is the *leading order* term of a
+low-frequency expansion. Probe near `wn` and the least squares fit stops
+being a low-frequency match: it chases the ringing, and the measured bias
+goes **negative**, -0.030 s at `t_move = 0.25` against a predicted +0.024.
+Slowing the probe recovers the law monotonically: +0.0005 at 0.8 s, +0.011
+at 1.5 s, +0.017 at 2.5 s, +0.0195 at 4.0 s. The three-lag plant never
+showed this because a cascade of real lags cannot ring. The sweep now probes
+at `t_move = 2.5` s and the caveat is stated rather than hidden.
+
+Checked and correct as written: `invert_lag` is exact to 1e-12,
+`invert_slosh` has DC gain 1.000000 with the intended rolloff, and the
+analytic bias formula matches the numeric low-frequency slope exactly at
+`xi = 0.7`.
+
+**The multi-basin premise is real, but the learner was never made to face
+it.** Scanning the loss over `log wn` on a soft fast trial gives two minima,
+the true one at 9.9 rad/s and a side lobe at 22.2 rad/s. The original
+`WN_INIT = 4.0` sits downhill of the true minimum, so the learner walked
+straight to it and the non-convexity that motivated a complex pole was never
+encountered. `WN_INIT` is now 24.0, inside the wrong basin.
+
+## Findings (20 seeds, 60 trials, after the fixes)
+
+| | trials | final error | peak &#124;tau_d error&#124; | wn error | n_eff | failed |
+|---|---|---|---|---|---|---|
+| C1 deep end, open | 7 | 0.039 | 0.329 s | 0.05 | 2.00 | 3.6 |
+| C2 curriculum, open | 22 | 0.041 | 0.024 s | 0.12 | 1.98 | 0.0 |
+| C3 stiff throughout | never | 0.570 | 0.017 s | 14.00 | 1.00 | 0.0 |
+| C4 deep end, closed | 8 | 0.031 | 0.700 s | 0.08 | 2.00 | 4.3 |
+| C5 curriculum, closed | 22 | 0.030 | 0.024 s | 0.08 | 2.00 | 0.0 |
+
+**The slosh bias law now holds across the range.** Fitted against predicted:
+0.0166/0.0240 at `xi = 0.7`, then 0.0065/0.0069, 0.0035/0.0035,
+0.0019/0.0017, 0.0012/0.0010, 0.0009/0.0007, 0.0006/0.0004. The soft end
+sits at 69% of the asymptote only because a finite-speed probe is still not
+a zero-frequency probe.
+
+**C3 stays at first order for a real reason now.** `n_eff = 1.00` and `wn`
+never leaves its initial value, but the Jacobian on `wn` at `xi = 3` is
+3.6e-3, not zero, and the loss over `wn` has a total range of 2.5e-5. The
+information is absent, not deleted. That is the claim K3 was supposed to
+make, now made without a branch propping it up.
+
+**Curriculum is still safer, not faster, and the result is now much harder
+to dismiss.** C2 and C5 have zero failed trials and roughly 14 times smaller
+peak dominant-mode bias than the deep end, while taking three times as many
+trials. This survives a genuinely non-convex frequency search with the
+learner initialised *inside* the wrong basin.
+
+**Why the deep end escapes the spurious basin anyway.** The EKF inflates its
+measurement noise while the residual is large, `R = max(R_std^2, mean(e^2))`.
+That flattens the effective loss surface exactly when the model is worst,
+which is graduated non-convexity arriving for free. The filter already does
+internally what the curriculum was supposed to supply externally. This is
+the sharpest single reason the speed claim keeps failing across all three
+learners, and it belongs in the proposal.
+
+**Closed-loop plant inversion still did not flip the ordering.** C4 matches
+C1 on trials (8 vs 7) but is worse on both risk measures: peak bias 0.700 s
+against 0.329 s, and 4.3 failures against 3.6. A wrong inverse does corrupt
+the trajectory; it just does not slow identification. Authority is limited
+by the slosh weight and by uncertainty, so the inverse stays nearly
+open-loop until the slosh has already been learned. An unrestricted inverse
+aborts every trial before usable data.
+
+Do not claim: "Learner 3 learns the dominant pole faster under a curriculum
+than C1/K1/S1." It does not, and it now fails to under conditions
+deliberately built to favour it. The usable content is the slosh plant, the
+bias law surviving a change of transient, emergent recruitment of a
+resonance, and a closed-loop command that is explicitly *not* a task model.
