@@ -5,14 +5,44 @@ Royal Society URF proposal *Tuning to Learn* (MV1: twin check).
 
 > **The learner in the proposal is Learner 4** (`scripts/run_learner4.*`).
 > Proposal labels **S1–S4** are a subset of code conditions **L1–L6**.
-> Learners 1–3 below are earlier development runs; they are **not** cited in the
+> Learners 1–3 are earlier development runs; they are **not** cited in the
 > proposal figure or MV1 text.
 
-Full implementation walkthrough (plant, hand trajectory, Kalman filters):
-[`IMPLEMENTATION.md`](IMPLEMENTATION.md).
+| Doc | Link |
+|-----|------|
+| **Implementation (Learner 4)** | [`IMPLEMENTATION.md`](IMPLEMENTATION.md) — plant, hand motion, EKF, loop |
+| **Short presentation** | [`outputs/learner4/learner4_slides.pdf`](outputs/learner4/learner4_slides.pdf) — Beamer deck |
+| **Theory PDF** | [`report/theory.pdf`](report/theory.pdf) — \(\rho(\xi)\), bias law, derivations |
+| **Other learners (1–3)** | [`OTHER_LEARNERS.md`](OTHER_LEARNERS.md) |
 
-**Theory PDF** (derivations of \(\rho(\xi)\), bias law, EKF notes):
-[`report/theory.pdf`](report/theory.pdf).
+---
+
+## How Learner 4 works (one-trial block diagram)
+
+![Learner 4 complete block diagram](outputs/learner4/learner4-complete-block.png)
+
+Vector source: [`learner-4-block-diagram-aranged.svg`](outputs/learner4/learner-4-block-diagram-aranged.svg).
+
+**Small reading of the diagram.** Each trial is one pass around this loop:
+
+1. **Co-contraction schedule \(\xi\)** chooses soft, braced, or staged grip (and,
+   for L5/L6, when to relax / promote).
+2. **Hand action generator** builds a fixed-duration min-jerk out-and-back reach
+   plus band-limited exploration — the same movement class a limb can actually
+   produce.
+3. That command \(u\) drives both the **true plant**
+   \(G^*(s)=1/((1+\tau_d^*s)(1+\tau_1^*s)(1+\tau_2^*s))\) (felt fast lags
+   compressed by \(\rho(\xi)\)) and the **EKF model** \(h(q,u,\xi)\) (first-order
+   on \(\hat\tau_d\) only, or full third-order with blended transients).
+4. A **failure gate** aborts the trial if \(|y-\hat y|\) is too large (“spill”);
+   otherwise the **EKF update** turns the residual into a new belief \(q,P\).
+5. **Scoreboards** (slow / soft-probe test / full object) decide trials-to-criterion;
+   staged conditions feed confidence back into \(\xi\).
+
+Full walkthrough of every block (equations, hyperparameters, code paths):
+**[`IMPLEMENTATION.md`](IMPLEMENTATION.md)**.  
+Slide version of the same story:
+**[view the short presentation (PDF)](outputs/learner4/learner4_slides.pdf)**.
 
 ---
 
