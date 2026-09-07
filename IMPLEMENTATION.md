@@ -5,8 +5,8 @@
 > Code name: **Learner 4**. Proposal figure: `learner4-sim` /
 > [`outputs/learner4/learner4_proposal.png`](outputs/learner4/learner4_proposal.png).
 >
-> Learners 1–3 in this repo are earlier development runs. Do not regenerate them
-> for the proposal figure.
+> Learners 1–3 are earlier development runs (not for the proposal figure).
+> Short summaries and full write-ups: [`OTHER_LEARNERS.md`](OTHER_LEARNERS.md).
 
 **Regenerate (canonical: 20 seeds × 60 trials):**
 
