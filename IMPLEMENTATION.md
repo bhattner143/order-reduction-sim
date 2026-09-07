@@ -24,8 +24,7 @@
 ```
 
 Annotated home-page figure (also on the README):
-[`outputs/learner4/learner4-complete-block.png`](outputs/learner4/learner4-complete-block.png)
-· SVG: [`outputs/learner4/learner-4-block-diagram-aranged.svg`](outputs/learner4/learner-4-block-diagram-aranged.svg).
+[`outputs/learner4/learner-4-block-diagram-aranged.svg`](outputs/learner4/learner-4-block-diagram-aranged.svg).
 
 **Short presentation:** [`outputs/learner4/learner4_slides.pdf`](outputs/learner4/learner4_slides.pdf)
 (`./scripts/build_learner4_slides.sh`).

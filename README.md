@@ -19,9 +19,7 @@ Royal Society URF proposal *Tuning to Learn* (MV1: twin check).
 
 ## How Learner 4 works (one-trial block diagram)
 
-![Learner 4 complete block diagram](outputs/learner4/learner4-complete-block.png)
-
-Vector source: [`learner-4-block-diagram-aranged.svg`](outputs/learner4/learner-4-block-diagram-aranged.svg).
+![Learner 4 complete block diagram](outputs/learner4/learner-4-block-diagram-aranged.svg)
 
 **Small reading of the diagram.** Each trial is one pass around this loop:
 
