@@ -11,6 +11,9 @@ Royal Society URF proposal *Tuning to Learn* (MV1: twin check).
 Full implementation walkthrough (plant, hand trajectory, Kalman filters):
 [`IMPLEMENTATION.md`](IMPLEMENTATION.md).
 
+**Theory PDF** (derivations of \(\rho(\xi)\), bias law, EKF notes):
+[`report/theory.pdf`](report/theory.pdf).
+
 ---
 
 ## Proposal mapping (read this first)
