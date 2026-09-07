@@ -17,6 +17,7 @@
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{array}
+\usepackage{makecell}
 \usepackage{longtable}
 \usepackage{enumitem}
 \usepackage{microtype}
@@ -85,6 +86,11 @@ each explained panel by panel.
 \item \S\ref{sec:learner1results} --- what Learner 1's figure shows, panel by panel.
 \item \S\ref{sec:learner2} --- Learner 2, with EKF and ARD derived from scratch.
 \item \S\ref{sec:learner2results} --- what Learner 2's figure shows, panel by panel.
+\item \S\ref{sec:learner4} --- Learner 4: only the slow lag is what a person keeps;
+  read \S\ref{sec:learner4guide} (what L1--L6 mean),
+  \S\ref{sec:learner4trial} (one trial line-by-line in code, with equations;
+  Figure~\ref{fig:learner4block} is the block diagram), and
+  \S\ref{sec:learner4rankings} (best to worst by scoreboard).
 \item \S\ref{sec:conclusions} --- what we conclude and what we do \emph{not} claim.
 \end{enumerate}
 
@@ -1615,6 +1621,871 @@ from the available data.
 \end{stepbox}
 
 % =============================================================================
+\section{Learner 4 --- co-contracting in order to learn}
+\label{sec:learner4}
+% =============================================================================
+
+Learners~1--3 scored a model of the \emph{whole object}. That is why the stiff
+first-order conditions (S3, K3, C3) looked like failures: their impulse error
+against the true third-order cup plateaus near $0.40$, even when
+$\hat\tau_d$ is essentially perfect. Learner~4 changes the
+\emph{scoreboard}, not the plant, and puts the three strategies a person
+could actually adopt side by side:
+
+\begin{enumerate}[nosep]
+\item \textbf{Do not co-contract}, and identify the whole third-order plant.
+\item \textbf{Co-contract and learn only the slow lag}, treating the
+  transients as noise.
+\item \textbf{Co-contract, then relax progressively} and learn the whole
+  model gradually.
+\end{enumerate}
+
+The underlying claim is that the third strategy should dominate, because
+without co-contraction the learner faces a third-order identification
+problem, whereas with it the coupling has already filtered the transients
+and the learner faces a first-order one.
+
+Movement time is held at the fast reach ($t_{\mathrm{move}}=0.25$\,s) in
+\emph{every} cell, including the staged ones, so the only quantity that ever
+varies is $\xi$.
+
+\begin{center}
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+ & Learner & $\xi$ & Strategy \\
+\midrule
+L1 & third-order EKF & $0.7$ & no co-contraction, learn the full model \\
+L2 & first-order EKF on $\log\tau_d$ & $3.0$ & co-contract, learn the slow model only \\
+L3 & first-order EKF on $\log\tau_d$ & $0.7$ & control: capacity without the filter \\
+L4 & third-order EKF & $3.0$ & control: filter without the restriction \\
+L5 & third-order EKF & staged & co-contract, then learn the whole model gradually \\
+L6 & first $\to$ third-order & staged & learn the slow lag stiff, then warm-start \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Guide to the six conditions (L1--L6)}
+\label{sec:learner4guide}
+
+Table~\ref{tab:learner4conditions} is the lay reference for every row in
+Figure~\ref{fig:learner4}.  L1, L2 and L5 are the three strategies a person
+could actually adopt; L3 and L4 are \emph{controls} that isolate which half
+of L2 is doing the work; L6 is the strongest version of the staged
+hypothesis.
+
+\small
+\begin{longtable}{@{}p{0.7cm}p{1.5cm}p{2.0cm}p{2.2cm}p{4.8cm}p{2.6cm}@{}}
+\caption{What each Learner~4 condition means, with an everyday cup-and-arm
+example.  Movement speed is the same fast reach in every row; only
+co-contraction $\xi$ and the learner's model capacity differ.}
+\label{tab:learner4conditions}\\
+\toprule
+\textbf{Code} & \textbf{Co-contraction} & \textbf{Learner capacity} & \textbf{Strategy in one line} &
+\textbf{Everyday example (cup of coffee)} & \textbf{Role} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Code} & \textbf{Co-contraction} & \textbf{Learner capacity} & \textbf{Strategy in one line} &
+\textbf{Everyday example (cup of coffee)} & \textbf{Role} \\
+\midrule
+\endhead
+L1 &
+Soft throughout ($\xi=0.7$) &
+Full third-order (three lags) &
+No co-contraction: learn the whole cup from trial one &
+You pick up a full mug with a \emph{relaxed} arm and try to learn
+\emph{everything at once}---how sluggish the cup feels \emph{and} how it
+wobbles and sloshes.  Fast, but you spill sometimes while your mental model
+is still wrong. &
+Main comparison: the ``deep end'' \\
+\addlinespace
+L2 &
+Stiff throughout ($\xi=3.0$) &
+Slow only (one lag, $\tau_d$) &
+Co-contract and learn only the slow part; treat wobble as filtered out &
+You \emph{squeeze hard} the whole time and tell yourself: ``I only need to
+learn how \emph{heavy/sluggish} this cup is; the quick slosh is not in what
+I feel.''  You learn that sluggishness in three trials and never spill---but
+you never learn the slosh because you never relax. &
+Human-like slow-only strategy \\
+\addlinespace
+L3 &
+Soft throughout ($\xi=0.7$) &
+Slow only (one lag) &
+\emph{Control:} same capacity as L2, but \emph{no} filter &
+You use the same ``only learn sluggishness'' mindset as L2, but your arm
+stays \emph{soft}, so the slosh is still plainly there.  Ignoring it is
+now a \emph{mistake}, not a filter: you merge wobble into your sluggishness
+estimate, stay systematically wrong, and keep spilling. &
+Negative control for L2 \\
+\addlinespace
+L4 &
+Stiff throughout ($\xi=3.0$) &
+Full third-order (three lags) &
+\emph{Control:} full capacity, filter present, never relax &
+You squeeze hard and your brain \emph{could} track three time scales---but
+while stiff the fast ones vanish from the data, so the learner \emph{prunes
+itself} to first order anyway ($\neff=1$).  Identical to L2 on the slow
+scoreboard. &
+Is the speed-up the filter or the restriction? \\
+\addlinespace
+L5 &
+Staged: $3.0\to1.3\to0.7$ &
+Full third-order &
+Co-contract first, then relax when confident and learn the whole cup &
+Thrish's curriculum: start with a \emph{stiff, braced} arm and learn safely;
+once you are confident about the main sluggishness, \emph{relax in stages}
+and let the slosh reappear so you can learn it too.  Zero spills; takes
+longer than L1 if spills are free. &
+Staged full-model strategy \\
+\addlinespace
+L6 &
+Staged: $3.0\to1.3\to0.7$ &
+Slow while stiff, then \emph{promoted} to full third-order &
+Learn $\tau_d$ while stiff, then \emph{hand it over} to a full learner &
+Same staging as L5, but the moment you first relax you \emph{transfer} your
+slow-lag estimate (and how sure you are of it) into a fresh full-order
+learner instead of making it rediscover sluggishness from scratch.  Best
+compromise between safety and eventual full-cup knowledge. &
+Strongest staged hypothesis \\
+\bottomrule
+\end{longtable}
+\normalsize
+
+\begin{examplebox}{How to read the three strategy rows}
+\textbf{L1} asks: ``What if I never co-contract?''\;
+\textbf{L2} asks: ``What if I co-contract and only keep the slow part?'';
+\textbf{L5/L6} ask: ``What if I co-contract first and then learn the rest?''
+The controls L3 and L4 answer \emph{why} L2 works when it does: L3 shows
+that ignoring transients without a filter fails; L4 shows that the filter,
+not the choice to use a one-parameter model, is what makes the slow lag
+learnable in three trials.
+\end{examplebox}
+
+The first-order filter is the iterated-EKF step of \S\ref{sec:learner2},
+restricted to the dominant-mode channel and with the same hyperparameters on
+that channel, so L2 versus L1 is a comparison of \emph{what is being
+estimated}, not of how the estimator works. The plant is unchanged: the two
+fast lags are still there, and they are still compressed by $\rho(\xi)$.
+Staged conditions relax through $\xi = 3.0 \to 1.3 \to 0.7$ under the same
+confidence gate K2 used (posterior sd on $\log\tau_d$ below $0.04$, minimum
+five trials per stage). L6 promotes at the first relaxation, transferring
+$\log\tau_d$ and its posterior variance into a fresh third-order learner and
+nothing else, so its head start is on the slow lag alone.
+
+% ---------------------------------------------------------------------------
+\subsection{One trial, line by line (lay walkthrough of \texttt{experiment4.py})}
+\label{sec:learner4trial}
+% ---------------------------------------------------------------------------
+
+This subsection is the companion to the code in
+\texttt{order\_reduction/experiment4.py}, function \texttt{run\_seed},
+roughly lines 271--321.  Read it as a story: \emph{you pick up a cup, move
+your hand, feel what happens, compare that to what your brain expected, and
+(if you did not spill) update your mental model}.
+
+\begin{howto}{Map of one trial (keep this picture in mind)}
+\begin{center}
+\small
+\begin{tabular}{@{}cll@{}}
+\toprule
+\textbf{Step} & \textbf{Code} & \textbf{Layman meaning} \\
+\midrule
+1 & \texttt{xi = \_xi\_for(...)} & How hard do I grip this trial? \\
+2 & \texttt{ref = reach\_reference(...)} & Planned smooth reach (desired hand path) \\
+3 & \texttt{u = ref + explore} & Actual hand command (plan + small wiggles) \\
+4 & \texttt{y = cascade\_exact(...) + noise} & What the \emph{true cup} feels like \\
+5 & \texttt{y\_hat = learner.predict(...)} & What my \emph{brain} expects to feel \\
+6 & failure check on $|y-\hat y|$ & Did I spill? Truncate the trial if so \\
+7 & \texttt{learner.observe(...)} or \texttt{drift()} & Learn from usable data, or forget a bit \\
+8 & scoreboards + staging & Did I learn slow / full / soft-test? Relax? \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Two cups, one motion.}  The same hand command $u$ is sent through
+\emph{two} systems:
+\begin{itemize}[nosep]
+\item the \textbf{true plant} (fixed third-order cup) $\to$ felt $y$;
+\item the \textbf{learner's model} $h(q,u,\xi)$ $\to$ predicted $\hat y$.
+\end{itemize}
+Learning is nothing more than making $\hat y$ closer to $y$ by updating $q$.
+\end{howto}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{../outputs/learner4/learner4_block_diagram_simple.pdf}
+\caption{Learner~4 one-trial flow (main blocks). Same hand command $u$
+drives the true plant and the EKF model; the failure gate truncates bad
+trials; \texttt{observe} updates the belief. A fuller annotated version is
+\texttt{outputs/learner4/learner4\_block\_diagram.pdf}.}
+\label{fig:learner4block}
+\end{figure}
+
+\subsubsection{The loop skeleton}
+
+\begin{verbatim}
+for n in range(n_trials):
+    xi = _xi_for(condition, stage)
+    ref = reach_reference(n_t, dt, t_move)
+    u = ref + U_EXPLORE * band_limited_noise(...)
+    y = cascade_exact(experienced_taus(TAU_TRUE, xi), u, dt) + noise
+    y_hat = learner.predict(u, xi)
+    # failure gate -> stop index
+    if stop >= MIN_USABLE:
+        learner.observe(u[:stop], y[:stop], xi)
+    else:
+        learner.drift()
+    # log errors; maybe promote / relax stage
+\end{verbatim}
+
+Constants used below (Learner~4): $\dt=0.01$\,s, $T_{\mathrm{trial}}=2.5$\,s
+so $n_t=250$, $t_{\mathrm{move}}=0.25$\,s (\texttt{FAST\_MOVE}),
+\texttt{U\_EXPLORE}${}=0.10$, \texttt{NOISE\_STD}${}=0.012$,
+\texttt{S\_BASE}${}=0.15$, \texttt{MIN\_USABLE}${}=20$.
+
+% ----- step 1: xi -----------------------------------------------------------
+\subsubsection{Step 1 --- grip $\xi$ for this condition}
+
+\texttt{\_xi\_for(condition, stage)} returns:
+\begin{itemize}[nosep]
+\item soft schedule (L1, L3): $\xi=\xi_{\mathrm{soft}}=0.7$;
+\item stiff schedule (L2, L4): $\xi=\xi_{\mathrm{stiff}}=3.0$;
+\item staged (L5, L6): $\xi\in\{3.0,\,1.3,\,0.7\}$ according to stage.
+\end{itemize}
+Grip does \emph{not} change the true cup's $\tau^\star$; it changes the
+\emph{felt} time constants via $\rho(\xi)$ (\S\ref{sec:rho},
+\S\ref{sec:plant}).
+
+% ----- step 2: ref ----------------------------------------------------------
+\subsubsection{Step 2 --- planned reach \texttt{reach\_reference}}
+
+\begin{verbatim}
+ref = reach_reference(n_t, dt, t_move)
+\end{verbatim}
+
+This is \textbf{desired hand motion}, not the plant and not the felt signal.
+Code (\texttt{plant.py}):
+
+\begin{verbatim}
+t = np.arange(n) * dt
+out  = min_jerk(t, t_move)                          # forward
+back = min_jerk(clip(t - (t_move+0.35), 0), t_move, amp=-1)
+ref  = out + back
+\end{verbatim}
+
+\textbf{Minimum-jerk forward leg} (same as \eqref{eq:minjerk}):
+\begin{equation}
+s = \mathrm{clip}\!\Bigl(\frac{t}{t_{\mathrm{move}}},0,1\Bigr),\qquad
+u_{\mathrm{out}}(t) = 10s^3 - 15s^4 + 6s^5.
+\label{eq:l4minjerk}
+\end{equation}
+Then a mirrored return starting at $t=t_{\mathrm{move}}+0.35$:
+\begin{equation}
+u_{\mathrm{ref}}(t) = u_{\mathrm{out}}(t)
+  - u_{\mathrm{out}}\bigl(\mathrm{clip}(t-(t_{\mathrm{move}}+0.35),0)\bigr).
+\label{eq:l4ref}
+\end{equation}
+
+\begin{examplebox}{Why the first samples of \texttt{ref} are almost zero}
+With $t_{\mathrm{move}}=0.25$\,s and $\dt=0.01$\,s the hand \emph{starts from
+rest}.  The min-jerk polynomial begins as $\sim s^3$, so early position is tiny:
+
+\begin{center}
+\small
+\begin{tabular}{@{}rrr@{}}
+\toprule
+$t$ (s) & $s=t/0.25$ & $u_{\mathrm{out}}$ (approx) \\
+\midrule
+$0.00$ & $0.00$ & $0.0000$ \\
+$0.01$ & $0.04$ & $6.0\times10^{-4}$ \\
+$0.02$ & $0.08$ & $4.5\times10^{-3}$ \\
+$0.05$ & $0.20$ & $0.032$ \\
+$0.25$ & $1.00$ & $1.000$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Then \texttt{ref} stays at $1$ during the pause ($0.25\to0.60$\,s), then the
+return leg brings it back.  Those near-zero early samples are intentional
+smooth acceleration, not a bug and not the third-order plant ``zeroing''
+anything.
+\end{examplebox}
+
+% ----- step 3: u ------------------------------------------------------------
+\subsubsection{Step 3 --- actual command $u$ (plan + exploration)}
+
+\begin{verbatim}
+u = ref + U_EXPLORE * band_limited_noise(n_t, dt, t_move, rng)
+\end{verbatim}
+
+\begin{equation}
+u = u_{\mathrm{ref}} + 0.10\cdot u_{\mathrm{explore}},
+\label{eq:l4u}
+\end{equation}
+where $u_{\mathrm{explore}}$ is unit-std band-limited noise
+\eqref{eq:bandlimited}.  \texttt{rng} is a seeded random generator
+(\texttt{np.random.default\_rng(seed)}) so each seed is reproducible but
+every trial has a different wiggle.
+
+\begin{examplebox}{Why band-limited, not white?}
+White noise would jab every cup mode on every trial and make ``learn all
+three modes from day one'' artificially easy.  Band-limited wiggles stay
+inside what a smooth arm can produce; the only way to excite fast modes is
+still to move \emph{fast} ($t_{\mathrm{move}}=0.25$\,s).  See
+\S\ref{sec:plant}.
+\end{examplebox}
+
+% ----- step 4: plant y ------------------------------------------------------
+\subsubsection{Step 4 --- true plant: $y$ from $u$}
+
+\begin{verbatim}
+y = cascade_exact(experienced_taus(TAU_TRUE, xi), u, dt)
+    + NOISE_STD * rng.normal(size=n_t)
+\end{verbatim}
+
+\textbf{This is the third-order plant.}  $y$ is \emph{not} hand motion; it is
+the \textbf{felt response} of the cup (and coupling) to hand motion $u$.
+
+True object (fixed forever):
+\begin{equation}
+G^\star(s)=\frac{1}{(1+\tau_d^\star s)(1+\tau_1^\star s)(1+\tau_2^\star s)},
+\qquad
+(\tau_d^\star,\tau_1^\star,\tau_2^\star)=(1.0,\,0.1,\,0.05)\,\mathrm{s}.
+\label{eq:l4true}
+\end{equation}
+
+\textbf{What grip changes} (\texttt{experienced\_taus}):
+\begin{equation}
+\rho(\xi)=\begin{cases}
+1 & \xi\le 1,\\
+\bigl(\xi+\sqrt{\xi^2-1}\bigr)^2 & \xi>1,
+\end{cases}
+\qquad
+\tau_{\mathrm{felt}}=\Bigl(\tau_d^\star,\;
+\tfrac{\tau_1^\star}{\rho(\xi)},\;
+\tfrac{\tau_2^\star}{\rho(\xi)}\Bigr).
+\label{eq:l4felt}
+\end{equation}
+
+\begin{examplebox}{Felt time constants at soft vs stiff}
+Soft $\xi=0.7$: $\rho=1$, feel $(1.0,\,0.10,\,0.05)$ --- all three modes.\\
+Stiff $\xi=3$: $\rho\approx34.3$, feel $(1.0,\,0.0029,\,0.0015)$ --- fast
+modes settle in a few milliseconds; the cup \emph{feels} nearly first-order.
+\end{examplebox}
+
+\textbf{Cascade equations} (\texttt{cascade\_exact}): three first-order lags
+in series.  Continuous intuition for one stage:
+\begin{equation}
+\tau\dot x = u_{\mathrm{in}}-x
+\quad\Leftrightarrow\quad
+\frac{X(s)}{U_{\mathrm{in}}(s)}=\frac{1}{1+\tau s}.
+\end{equation}
+Discrete update used in code (\eqref{eq:lagdisc}):
+\begin{equation}
+a=e^{-\dt/\tau},\qquad
+x[k]=a\,x[k-1]+(1-a)\,u_{\mathrm{in}}[k].
+\label{eq:l4lag}
+\end{equation}
+Chained:
+\begin{align}
+z^{(1)} &= \mathrm{Lag}(\tau_d^\star)\,[u], \nonumber\\
+z^{(2)} &= \mathrm{Lag}(\tau_1^\star/\rho)\,[z^{(1)}], \nonumber\\
+y_{\mathrm{plant}} &= \mathrm{Lag}(\tau_2^\star/\rho)\,[z^{(2)}],
+\label{eq:l4cascade}
+\end{align}
+then sensor noise:
+\begin{equation}
+y = y_{\mathrm{plant}} + 0.012\,\varepsilon,
+\qquad \varepsilon\sim\mathcal N(0,I_{n_t}).
+\label{eq:l4y}
+\end{equation}
+
+\begin{examplebox}{Numeric lag step}
+$\dt=0.01$, $\tau=1.0$: $a=e^{-0.01}\approx0.990$.  Each sample keeps 99\%
+of the previous felt value and admits 1\% of the new input --- a slow
+memory.  For a compressed fast mode $\tau=0.0029$: $a=e^{-0.01/0.0029}\approx0.032$,
+almost a pass-through (``already settled'').
+\end{examplebox}
+
+% ----- step 5: predict ------------------------------------------------------
+\subsubsection{Step 5 --- brain prediction $\hat y=\texttt{learner.predict}(u,\xi)$}
+
+\begin{verbatim}
+y_hat = learner.predict(u, xi)   # -> _h(self.q, u, xi)
+\end{verbatim}
+
+Same $u$ and $\xi$, but through the \textbf{learner's adjustable copy} of the
+cup, not through $\tau^\star$.
+
+\textbf{Full learner} (\texttt{TwoTimescaleEKF}; L1, L4, L5, L6 after promote).
+Belief state:
+\begin{equation}
+q=\bigl[\log\hat\tau_d,\;\log\hat\tau_1,\;\log\hat\tau_2,\;w_1,\;w_2\bigr]^\top.
+\label{eq:l4q}
+\end{equation}
+Prediction chain (\S\ref{sec:learner2}; code \texttt{\_h}):
+\begin{align}
+x^{(0)} &= u, \nonumber\\
+x^{(1)} &= \mathrm{Lag}(\hat\tau_d)\,[x^{(0)}], \nonumber\\
+x^{(2)} &= \mathrm{Blend}\bigl(\hat\tau_1/\rho(\xi),\,w_1\bigr)\,[x^{(1)}], \nonumber\\
+\hat y &= \mathrm{Blend}\bigl(\hat\tau_2/\rho(\xi),\,w_2\bigr)\,[x^{(2)}],
+\label{eq:l4h}
+\end{align}
+with blend
+\begin{equation}
+\mathrm{Blend}(\tau,w)[x]=(1-w)\,x + w\cdot\mathrm{Lag}(\tau)[x]
+\label{eq:l4blend}
+\end{equation}
+(\S\ref{sec:learner2}: $w$ turns a fast mode on/off \emph{without} killing
+$\tau\to0$, so pruning stays reversible).  Effective order:
+\begin{equation}
+\neff = 1 + w_1 + w_2.
+\label{eq:l4neff}
+\end{equation}
+
+\textbf{Slow-only learner} (\texttt{FirstOrderEKF}; L2, L3, early L6):
+\begin{equation}
+\hat y = \mathrm{Lag}(\hat\tau_d)\,[u]
+\qquad\text{($q=[\log\hat\tau_d]$ only; $\xi$ unused in $h$).}
+\label{eq:l4h1}
+\end{equation}
+
+\begin{examplebox}{Plant vs $h$ --- same family, not the same cup}
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+ & True plant $y$ & Belief $h\to\hat y$ \\
+\midrule
+Time constants & fixed $\tau^\star$ & learned from $q$ \\
+Fast modes & always full lags & blended by $w_1,w_2$ \\
+Noise & yes ($0.012$) & clean prediction \\
+\bottomrule
+\end{tabular}
+\end{center}
+When $w_1=w_2=1$ and $\hat\tau\approx\tau^\star$, $\hat y\approx y_{\mathrm{plant}}$.
+Early trials they do not match --- that mismatch is what drives learning.
+\end{examplebox}
+
+% ----- step 6: failure ------------------------------------------------------
+\subsubsection{Step 6 --- spill / failure gate}
+
+\begin{verbatim}
+tolerance = S_BASE * xi / XI_SOFT
+over = np.flatnonzero(np.abs(y - y_hat) > tolerance)
+failed = over.size > 0
+stop = int(over[0]) if failed else n_t
+\end{verbatim}
+
+\begin{equation}
+\text{tolerance} = 0.15\cdot\frac{\xi}{0.7},
+\qquad
+\text{fail if } |y[k]-\hat y[k]| > \text{tolerance for some }k.
+\label{eq:l4fail}
+\end{equation}
+\textbf{Layman:} if prediction is too far from feel, you ``spill'' and the
+trial stops at the first bad sample.  Stiffer grip raises tolerance
+(more room for error while braced).  Only the prefix $u[:\texttt{stop}]$,
+$y[:\texttt{stop}]$ is available to learn from.
+
+% ----- step 7: observe ------------------------------------------------------
+\subsubsection{Step 7 --- \texttt{observe}: the EKF learns (or \texttt{drift})}
+
+\begin{verbatim}
+if stop >= MIN_USABLE:          # need >= 20 samples
+    stats = learner.observe(u[:stop], y[:stop], xi)
+else:
+    learner.drift()             # P <- P+Q; q unchanged
+\end{verbatim}
+
+\texttt{observe} is where the Extended Kalman Filter updates beliefs
+(\S\ref{sec:ekf}).  \texttt{predict} only \emph{uses} $q$; \texttt{observe}
+\emph{changes} $q$ and $P$.
+
+\paragraph{Layman story.}
+You felt $y$, expected $\hat y=h(q,u,\xi)$, saw residual $e=y-\hat y$.
+\texttt{observe} asks: ``which knobs in $q$ would shrink that residual, and how
+sure am I?'' then nudges those knobs a little.
+
+\paragraph{Equations (full \texttt{TwoTimescaleEKF.observe}).}
+
+Prior / process:
+\begin{equation}
+q^- = q,\qquad P^- = P+Q,\qquad P_{\mathrm{inv}}=(P^-)^{-1}.
+\label{eq:l4prior}
+\end{equation}
+
+Iterate $m=1,\ldots,3$ (\texttt{IEKF\_ITERS}; re-linearise each time):
+\begin{align}
+\hat y &= h(q,u,\xi), \label{eq:l4obs1}\\
+e &= (y-\hat y)_{\downarrow\mathrm{THIN}}, \label{eq:l4obs2}\\
+H_{:,i} &= \frac{h(q+\varepsilon e_i)-h(q)}{\varepsilon}
+  \quad\text{(finite-diff.\ Jacobian; then thin)}, \label{eq:l4obs3}\\
+R &= \max\bigl(\sigma_R^2,\;\overline{e^2}\bigr), \label{eq:l4obs4}\\
+A &= P_{\mathrm{inv}} + \frac{H^\top H}{R} + \diag(\alpha), \label{eq:l4obs5}\\
+P^+ &= A^{-1}, \label{eq:l4obs6}\\
+\Delta q &= P^+\Biggl(
+  \underbrace{\frac{H^\top e}{R}}_{\text{data pull}}
+  -\underbrace{\alpha(q-q_{\mathrm{target}})}_{\text{ARD: pull }w\to0}
+  -\underbrace{P_{\mathrm{inv}}(q-q^-)}_{\text{stay near prior}}
+\Biggr), \label{eq:l4obs7}\\
+q &\leftarrow \mathrm{clip}\bigl(q+\mathrm{clip}(\Delta q,\pm\Delta_{\max}),\,q_{\mathrm{lo}},q_{\mathrm{hi}}\bigr).
+\label{eq:l4obs8}
+\end{align}
+Commit $q\leftarrow q$, $P\leftarrow P^++\varepsilon I$.  Then ARD refreshes
+$\alpha$ on $w_1,w_2$ only (\S\ref{sec:ekf}).
+
+\begin{stepbox}{What each line means in plain English}
+\begin{enumerate}[nosep]
+\item \eqref{eq:l4obs1}--\eqref{eq:l4obs2}: recompute expected feel and the
+  surprise $e$.
+\item \eqref{eq:l4obs3}: for each knob, ``if I tweak you, how does $\hat y$
+  change?''
+\item \eqref{eq:l4obs4}: early big errors are model error, not tiny sensor
+  noise --- do not become overconfident too soon.
+\item \eqref{eq:l4obs5}--\eqref{eq:l4obs7}: information-form Kalman update
+  plus a prior that prefers small fast-mode weights unless the data clearly
+  need them.
+\item \eqref{eq:l4obs8}: take a bounded step so one messy trial cannot wreck
+  the model.
+\end{enumerate}
+\end{stepbox}
+
+\begin{examplebox}{Tiny numeric intuition for one update}
+Suppose truth $\tau_d^\star=1.0$ but belief $\hat\tau_d=0.30$.  Then $h$
+responds too fast; $e$ has a clear pattern; the $\log\hat\tau_d$ column of $H$
+says ``increasing $\hat\tau_d$ would help''; $\Delta q$ bumps $\log\hat\tau_d$
+up a little.  After many trials $\hat\tau_d\to1$, $e$ shrinks, and the
+diagonal of $P$ for that entry gets smaller (more confident).  Under stiff
+$\xi$, $e$ barely depends on $w_1,w_2$, so ARD shrinks them and
+$\neff\to1$.
+\end{examplebox}
+
+\texttt{FirstOrderEKF.observe} is the same loop with
+$q=[\log\hat\tau_d]$ only and no ARD term.
+
+% ----- step 8: score / stage ------------------------------------------------
+\subsubsection{Step 8 --- scoreboards, TTC, and staging / promote}
+
+After the update, every trial logs three errors (and friends):
+\begin{align}
+\texttt{bias\_d} &= \hat\tau_d - \tau_d^\star, \nonumber\\
+\texttt{err} &= \text{full-object impulse relative error}, \nonumber\\
+\texttt{test\_err} &= \text{relative error on the common soft fast probe}.
+\label{eq:l4scores}
+\end{align}
+
+\textbf{Common test probe} (built once per seed; identical for every L):
+\begin{verbatim}
+probe_u = reach_reference(...)           # clean ref, no exploration
+probe_y = cascade_exact(felt at XI_SOFT, probe_u)
+test_err = ||probe_y - learner.predict(probe_u, XI_SOFT)|| / ||probe_y||
+\end{verbatim}
+So the fair exam is always: \emph{``Can you predict a soft, fast reach?''}
+even if you trained while stiff.
+
+Time-to-criterion requires the relevant error below threshold for
+\texttt{CRITERION\_STREAK}${}=3$ consecutive trials
+(\texttt{SLOW\_CRITERION}${}=0.08$, \texttt{FULL}/\texttt{TEST}${}=0.10$).
+
+\textbf{Staged L5/L6.}  After enough trials in a stage and
+$\mathrm{sd}(\log\hat\tau_d)<0.04$, stage advances
+$\xi:3.0\to1.3\to0.7$.  On L6's first advance, \texttt{\_promote} copies
+only $\log\hat\tau_d$ and its variance into a fresh \texttt{TwoTimescaleEKF};
+$w_1,w_2,\hat\tau_1,\hat\tau_2$ start from the usual prior.
+
+% ----- big picture ----------------------------------------------------------
+\subsubsection{Putting the whole chain together}
+
+\begin{equation}
+\boxed{\;
+\begin{aligned}
+&u_{\mathrm{ref}}\xrightarrow{\;+\,0.1\,u_{\mathrm{explore}}\;} u \\
+&u \xrightarrow{\;\text{true cascade at }\tau_{\mathrm{felt}}(\xi)\;}
+  y_{\mathrm{plant}}\xrightarrow{\;+\,\text{noise}\;} y \\
+&u \xrightarrow{\;h(q,\xi)\;} \hat y \\
+&e=y-\hat y \xrightarrow{\;\texttt{observe}\;} q^+,\,P^+
+\end{aligned}
+\;}
+\label{eq:l4pipeline}
+\end{equation}
+
+\begin{resultbox}{What this loop is testing}
+Same plant, same fast reach, six learning policies (L1--L6).  The question is
+not ``can an EKF fit a known model?'' --- it is whether \textbf{co-contracting
+so that the world looks first-order} lets a person (or agent) learn the slow
+part safely and then, by relaxing / promoting, acquire the full soft-cup
+behaviour on the shared test probe.
+\end{resultbox}
+
+\subsection{Three scoreboards}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Name & Measure & Criterion \\
+\midrule
+slow & $|\hat\tau_d-\tau_d|$, the part a person keeps & $<0.08$\,s \\
+full & impulse error of the belief about the whole object & $<0.10$ \\
+test & relative error predicting a common soft, fast probe & $<0.10$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The \textbf{test} scoreboard is the fair one. Every condition is asked to
+predict the same deterministic, noise-free soft reach, whatever stiffness it
+happens to be holding, so ``I can only do this while braced'' appears as a
+cost instead of being hidden. The slow criterion is tighter than the soft
+first-order bias floor $(\tau_1+\tau_2)/\rho(0.7)=0.150$\,s, so L3 cannot
+reach it unless the bias law \eqref{eq:bias_law} is wrong.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{../outputs/learner4/learner4.pdf}
+\caption{Learner~4, 20 seeds, 60 trials. Top row, the three scoreboards:
+error in the dominant lag, error on the common soft probe, and full-object
+impulse error. Bottom row: the stiffness schedule (movement speed is fixed
+throughout), emergent effective order, and trials to criterion against
+failed attempts. Every co-contracting strategy reaches the slow lag in three
+trials; only the ones that eventually relax reach the soft probe at all.}
+\label{fig:learner4}
+\end{figure}
+
+\begin{resultbox}{Co-contraction halves the trials to the slow lag (20 seeds, 60 trials)}
+\begin{center}
+\small
+\begin{tabular}{@{}lrrrrrrr@{}}
+\toprule
+ & slow & test & full & peak $|\Delta\tau_d|$ & test err & $\neff$ & failed \\
+\midrule
+L1 soft, 3rd          & 6     & \textbf{5} & \textbf{5} & $0.691$\,s & $0.007$ & $2.18$ & $4.0$ \\
+L2 stiff, slow-only   & \textbf{3} & never & never & $0.015$\,s & $0.216$ & $1.00$ & $0.0$ \\
+L3 soft, slow-only    & never & never & never & $0.962$\,s & $0.175$ & $1.00$ & $16.3$ \\
+L4 stiff, 3rd         & \textbf{3} & never & never & $0.015$\,s & $0.215$ & $1.00$ & $0.0$ \\
+L5 staged, 3rd        & \textbf{3} & 17 & 19 & $0.092$\,s & $0.007$ & $2.18$ & $0.0$ \\
+L6 staged, warm-start & \textbf{3} & 8 & 13 & $0.025$\,s & $0.007$ & $2.19$ & $0.0$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Holm-corrected two-sided Mann--Whitney. On the slow scoreboard: L2, L5 and
+L6 each beat L1 by $-3$ trials, $p=3.9\times10^{-7}$; L2 vs L4 is a tie;
+L2 beats L3 by $-58$, $p=3.8\times10^{-9}$. On the test scoreboard: L5 is
+\emph{slower} than L1 by $+12$, $p=3.7\times10^{-8}$, and L6 beats L5 by
+$-9$, $p=1.8\times10^{-8}$.
+\end{resultbox}
+
+\subsection{Ranking the conditions: best to worst}
+\label{sec:learner4rankings}
+
+The ``best'' condition depends entirely on which scoreboard you care about.
+There is no single winner across all three rulers; that is the point of
+Learner~4.  Table~\ref{tab:learner4rankings} lists the median ordering on
+each scoreboard (20 seeds, 60 trials).  ``never'' means the condition did
+not reach the criterion within 60 trials.
+
+\small
+\begin{longtable}{@{}p{2.6cm}p{5.8cm}p{5.8cm}@{}}
+\caption{Best-to-worst ordering for each scoreboard and safety measure.
+Ties share a rank.  Read down each column: first row is best, last is worst.}
+\label{tab:learner4rankings}\\
+\toprule
+\textbf{Scoreboard / measure} & \textbf{Best $\to$ worst (median trials or value)} &
+\textbf{Plain-language reading} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Scoreboard / measure} & \textbf{Best $\to$ worst} &
+\textbf{Plain-language reading} \\
+\midrule
+\endhead
+Slow lag
+($|\hat\tau_d-\tau_d|<0.08$\,s) &
+\makecell[l]{%
+\textbf{1st (tie):} L2, L4, L5, L6 --- 3 trials\\[2pt]
+\textbf{2nd:} L1 --- 6 trials\\[2pt]
+\textbf{Worst:} L3 --- never} &
+Co-contraction halves the trials to learn the sluggishness everyone keeps.
+L3 fails because there is no filter. \\
+\addlinespace
+Soft test
+(common unbraced reach; failures free) &
+\makecell[l]{%
+\textbf{1st:} L1 --- 5 trials\\[2pt]
+\textbf{2nd:} L6 --- 8 trials\\[2pt]
+\textbf{3rd:} L5 --- 17 trials\\[2pt]
+\textbf{Worst (tie):} L2, L3, L4 --- never} &
+If spilling costs nothing, going soft immediately wins the fair exam.
+Staying stiff forever (L2, L4) never passes; staging (L5, L6) eventually
+does, but slower than L1. \\
+\addlinespace
+Full object
+(impulse error $<0.10$; failures free) &
+\makecell[l]{%
+\textbf{1st:} L1 --- 5 trials\\[2pt]
+\textbf{2nd:} L6 --- 13 trials\\[2pt]
+\textbf{3rd:} L5 --- 19 trials\\[2pt]
+\textbf{Worst (tie):} L2, L3, L4 --- never} &
+Same story as the soft test: the deep end is fastest on the old Learner~2
+ruler when failures are free. \\
+\addlinespace
+Failed trials
+(lower is better) &
+\makecell[l]{%
+\textbf{Best (tie):} L2, L4, L5, L6 --- 0.0\\[2pt]
+\textbf{2nd:} L1 --- 4.0\\[2pt]
+\textbf{Worst:} L3 --- 16.3} &
+Every co-contracting strategy is perfectly safe.  L1 spills occasionally.
+L3 is catastrophic: wrong model \emph{and} constant spills. \\
+\addlinespace
+Peak error in slow lag
+(lower is better) &
+\makecell[l]{%
+\textbf{Best (tie):} L2, L4 --- 0.015\,s\\[2pt]
+\textbf{2nd:} L6 --- 0.025\,s\\[2pt]
+\textbf{3rd:} L5 --- 0.092\,s\\[2pt]
+\textbf{4th:} L1 --- 0.691\,s\\[2pt]
+\textbf{Worst:} L3 --- 0.962\,s} &
+How wrong you were about sluggishness at your \emph{worst} moment along the
+learning curve.  Co-contraction keeps that swing small; the deep end and
+L3 swing wildly. \\
+\addlinespace
+Effective trials to soft test
+when each failure costs $k$ extra trials &
+\makecell[l]{%
+$k=0$: L1 (5) $<$ L6 (8) $<$ L5 (17)\\[2pt]
+$k=1$: L6 (8) $=$ L1 (8) $<$ L5 (17)\\[2pt]
+$k\ge2$: L6 (8) $<$ L5 (17) $<$ L1 (11+)\\[2pt]
+$k=5$: L6 (8) $<$ L5 (17) $<$ L1 (20)\\[2pt]
+\textbf{Never competitive:} L2, L3, L4} &
+Once recovering from a spill costs even \emph{one} extra trial, warm-started
+staging (L6) draws level with or beats the deep end.  L2 and L4 never learn
+the unbraced reach at all. \\
+\bottomrule
+\end{longtable}
+\normalsize
+
+\begin{resultbox}{Overall verdict by goal}
+\begin{itemize}[nosep]
+\item \textbf{Goal: learn the slow lag quickly and safely.}\;
+  Best: \textbf{L2 = L4 = L5 = L6} (3 trials, 0 failures).\;
+  Worst: \textbf{L3} (never; 16 failures).
+\item \textbf{Goal: learn the whole cup fastest, spills are free.}\;
+  Best: \textbf{L1} (5 trials).\;
+  Worst: \textbf{L2, L3, L4} (never on the soft test).
+\item \textbf{Goal: learn the whole cup fastest, spills cost anything.}\;
+  Best: \textbf{L6} (8 effective trials from $k=1$ upward).\;
+  Second: \textbf{L5} (17 trials, overtakes L1 at $k=5$).\;
+  Worst on safety \emph{and} speed: \textbf{L3}.
+\item \textbf{Goal: understand the mechanism.}\;
+  L4 ties L2 on slow lag $\Rightarrow$ the \emph{filter} does the work, not
+  restricting to one parameter.\;
+  L3 fails $\Rightarrow$ you cannot treat transients as noise without
+  co-contraction first.
+\end{itemize}
+\end{resultbox}
+
+\begin{examplebox}{One-sentence character sketch of each condition}
+\textbf{L1} --- fast and reckless learner;\;
+\textbf{L2} --- safe slow learner who never finishes the textbook;\;
+\textbf{L3} --- worst of both worlds (wrong and unsafe);\;
+\textbf{L4} --- proves the plant filters itself while stiff;\;
+\textbf{L5} --- Thrish's patient curriculum (safe, complete, slow if spills
+are free);\;
+\textbf{L6} --- L5 done properly: the slow chapter is \emph{transferred}, not
+re-learned.
+\end{examplebox}
+
+\subsection{What the comparison shows}
+
+\begin{enumerate}[nosep]
+\item \textbf{Co-contraction does learn the slow dynamics faster.} Three
+  trials against six, with zero failed attempts against four. Every
+  co-contracting strategy shows it. This is the claim, and it holds.
+\item \textbf{The filter does the work, not the restriction.} L2 and L4 are
+  an exact tie. Once co-contraction has compressed the transients, a full
+  third-order EKF prunes itself to $\neff=1.00$ and learns $\tau_d$ just as
+  fast as a learner that was never offered the extra modes. Order reduction
+  is a property of the coupled plant, not a modelling choice.
+\item \textbf{Neglecting the transients is only legitimate after the
+  filter.} L3 never reaches criterion, plateaus at $+0.218$\,s of bias, and
+  loses $16$ trials. Calling the transients ``noise'' is correct once
+  $\rho(\xi)$ has removed them and a systematic error before that.
+\item \textbf{On the whole object, staging is still not a shortcut.}
+  Tested on the common soft probe, L1 arrives in 5 trials, L6 in 8, L5 in
+  17. The staged learner spends its first $\sim$15 trials in a regime where
+  the transients are not in the data at all, so it cannot learn them however
+  good its slow model becomes. L2, which never relaxes, never arrives.
+\item \textbf{Warm-starting recovers most of that loss.} L6 beats L5 by 9
+  trials purely by handing the converged slow lag across. If a curriculum is
+  to be defended, the value is in the \emph{transfer} of the slow estimate,
+  not in the staging.
+\end{enumerate}
+
+\subsection{The failure cost decides the full-model comparison}
+\label{sec:failurecost}
+
+The simulation charges nothing for a failed attempt beyond losing the rest
+of that trial's data, which is the most generous possible assumption for a
+learner that goes straight to the deep end. Charging a recovery overhead of
+$k$ extra trials per failure --- the sweep this report previously
+pre-registered as the way the ordering might flip --- gives the effective
+trials to the soft-probe criterion:
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrrrrrrrr@{}}
+\toprule
+recovery cost $k$ & $0$ & $0.5$ & $1$ & $2$ & $3$ & $5$ & $8$ & $12$ \\
+\midrule
+L1 soft              & $5.0$ & $6.5$ & $8.0$ & $11.0$ & $14.0$ & $20.0$ & $29.0$ & $41.0$ \\
+L5 staged            & $17.0$ & $17.0$ & $17.0$ & $17.0$ & $17.0$ & $17.0$ & $17.0$ & $17.0$ \\
+L6 staged, warm-start & $8.0$ & $8.0$ & $8.0$ & $8.0$ & $8.0$ & $8.0$ & $8.0$ & $8.0$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.86\linewidth]{../outputs/learner4/failure_cost.pdf}
+\caption{The staged learners are flat because they never fail. L6 draws
+level with the deep end as soon as one failed attempt costs a single extra
+trial and wins outright beyond that; L5 overtakes at a cost of five.}
+\label{fig:failurecost}
+\end{figure}
+
+So the full-model claim is conditional, and the condition is cheap to
+satisfy: \emph{if recovering from a dropped attempt costs anything at all,
+co-contracting to learn is also the faster route to the whole model.} For a
+cup of coffee, a bicycle or a trainee surgeon, a failed attempt costs a
+great deal more than one trial.
+
+\begin{warnbox}{Do not claim these}
+\begin{itemize}[nosep]
+\item ``Restricting the learner to first order is what speeds learning.''
+  L4 refutes it: a full-order learner held stiff is exactly as fast.
+\item ``Staging is faster than the deep end, full stop.'' With free
+  failures it is 12--14 trials \emph{slower}. The claim requires a non-zero
+  failure cost, which should be stated rather than assumed.
+\item ``A learner that stays stiff eventually learns the object.'' L2 never
+  reaches the soft-probe criterion and plateaus at a test error of $0.216$.
+  Co-contraction buys a correct slow model; only relaxation buys the
+  transients.
+\end{itemize}
+\end{warnbox}
+
+\begin{warnbox}{Parameter sensitivity}
+The 12-trial staging penalty in L5 is set by the forced dwell
+(\texttt{MIN\_TRIALS\_PER\_STAGE} $=5$ across three stages), not by the
+physics. The break-even failure costs in \S\ref{sec:failurecost} move with
+it, so quote them as order-of-magnitude rather than to two significant
+figures.
+\end{warnbox}
+
+% =============================================================================
 \section{Part IX --- Conclusions and discussion}
 \label{sec:conclusions}
 % =============================================================================
@@ -1654,9 +2525,28 @@ from the available data.
   methodological improvement over Learner~1's version of the same claim.
 
 \item \textbf{The curriculum reduces risk, not trial count}, in every
-  simulation run so far: S2 and K2 both have zero failed trials against 10--12
-  for the corresponding deep-end schedules S1/K1, while taking \emph{more}
-  trials, not fewer, to reach the same final model quality.
+  simulation run of Learners~1--3: S2 and K2 both have zero failed trials
+  against 10--12 for the corresponding deep-end schedules S1/K1, while taking
+  \emph{more} trials, not fewer, to reach the same full-object model quality.
+
+\item \textbf{Scoring the slow lag, which is what a person keeps, does
+  produce a speed result} (Learner~4, \S\ref{sec:learner4}). Every
+  co-contracting strategy reaches $|\hat\tau_d-\tau_d|<0.08$ in a median of
+  3 trials against 6 for a soft third-order learner
+  ($p=3.9\times10^{-7}$), with zero failed trials against four. The same
+  first-order learner without the filter never arrives. The speed-up is
+  manufactured by the plant becoming first-order, not by restricting the
+  estimator: the stiff third-order cell is a tie with the stiff first-order
+  cell.
+
+\item \textbf{On the whole object the advantage is conditional on the cost
+  of a failed attempt}, and that condition is now quantified rather than
+  speculated about (\S\ref{sec:failurecost}). With failures free, staging
+  costs 12--14 trials. Charging a recovery overhead of even one trial per
+  failure brings the warm-started staged learner level with the deep end,
+  and beyond that it wins, because it never fails at all. The earlier
+  ``curriculum is safer, not faster'' conclusion was therefore an artefact
+  of pricing failure at zero.
 
 \item \textbf{A person starting stiff and relaxing later is rational} if their
   objective is something like ``do not lose attempts to catastrophic failure
@@ -1717,11 +2607,11 @@ failed attempts.}
   with co-contraction setting its gain margin, is the natural next condition,
   and it would let instability during learning enter as part of the
   phenomenon being studied rather than being engineered away.
-\item \textbf{Sweep the cost of a failed trial.} Currently a failed trial
-  simply loses the remainder of that trial's data. If recovering from a
-  failure is expensive (as it plausibly is for a person, e.g.\ retrieving a
-  dropped object), the ordering between K1 and K2 on trial count, not just on
-  risk, might reverse.
+\item \textbf{Sweep the cost of a failed trial.} \emph{Done} ---
+  \S\ref{sec:failurecost}. The ordering does reverse, and it reverses at a
+  recovery cost of about one trial for the warm-started staged learner.
+  What remains open is calibrating that cost against a real task rather
+  than sweeping it.
 \item \textbf{Test the bias law directly against WP1 data.} Fit each
   participant's behaviour with a deliberately reduced-order model and check
   whether the residual bias in their fitted dominant time constant tracks
@@ -1745,10 +2635,15 @@ failed attempts.}
 \texttt{order\_reduction/experiment.py} & S1--S5 trial loop, failure rule \eqref{eq:surprise}--\eqref{eq:tolerance} \\
 \texttt{order\_reduction/diagnose.py} & $\kappa(\Phi)$ \eqref{eq:kappa} and behavioural cost \\
 \texttt{order\_reduction/bias.py} & Bias law \eqref{eq:bias_law} verification \\
-\texttt{order\_reduction/kalman\_learner.py} & Learner~2: EKF \eqref{eq:inf_A}--\eqref{eq:inf_update} + ARD \eqref{eq:ard} \\
+\texttt{order\_reduction/kalman\_learner.py} & Learner~2 / L1,L4,L5,L6 EKF: $h$, blend, \texttt{observe} \eqref{eq:l4h}--\eqref{eq:l4obs8}; ARD \eqref{eq:ard} \\
 \texttt{order\_reduction/experiment2.py} & K1--K5 trial loop \\
+\texttt{order\_reduction/slow\_learner.py} & First-order EKF on $\log\tau_d$ only \eqref{eq:l4h1} (L2, L3, early L6) \\
+\texttt{order\_reduction/experiment4.py} & L1--L6 trial loop \S\ref{sec:learner4trial}; three scoreboards; failure-cost sweep \\
+\texttt{report/learner4\_block\_diagram.tex} & One-trial block diagram (Figure~\ref{fig:learner4block}) \\
 \texttt{scripts/run\_curriculum.sh} & Run Learner~1 figures (Figure~\ref{fig:mech1}) \\
 \texttt{scripts/run\_learner2.sh} & Run Learner~2 figures (Figures~\ref{fig:bias}, \ref{fig:learner2}) \\
+\texttt{scripts/run\_learner4.sh} & Run Learner~4 figure (Figure~\ref{fig:learner4}) \\
+\texttt{scripts/build\_learner4\_block\_diagram.sh} & Build Figure~\ref{fig:learner4block} \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1758,6 +2653,7 @@ failed attempts.}
 \small
 \textit{Document generated to accompany \texttt{order-reduction-sim}. Recompile
 after code changes; re-run simulations to refresh figures in
-\texttt{outputs/curriculum/} and \texttt{outputs/learner2/}.}
+\texttt{outputs/curriculum/}, \texttt{outputs/learner2/} and
+\texttt{outputs/learner4/}.}
 
 \end{document}

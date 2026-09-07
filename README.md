@@ -1,14 +1,47 @@
 # order-reduction-sim
 
-A test of the order-reduction hypothesis from the 2026-07-01 meeting with
-Thrishantha Nanayakkara, as that hypothesis is stated in
-`meetings/2026-07-01-meeting-thrish.tex`.
+Simulation suite for the order-reduction / co-contraction hypothesis used in
+the Royal Society URF proposal *Tuning to Learn*.
 
-**Result: the hypothesis is not supported in the form the meeting note states
-it, and the reason is structural rather than a matter of parameter tuning.**
-Details below. The negative result is more useful to the proposal than the
-demonstration would have been, because it identifies which of the two claims
-in the note is load-bearing.
+## Regenerate the URF proposal figure (Learner 4)
+
+The proposal cites **Learner 4** only (EKF, fixed fast reach, L1–L6). Full
+walkthrough: [`IMPLEMENTATION.md`](IMPLEMENTATION.md).
+
+```bash
+python -m pip install -r requirements.txt
+./scripts/run_learner4.sh --trials 60 --seeds 20
+# override interpreter if needed:
+# PYTHON=python3 ./scripts/run_learner4.sh --trials 60 --seeds 20
+```
+
+Writes under `outputs/learner4/`:
+
+| File | Role |
+|------|------|
+| `learner4_proposal.pdf` / `.png` | **URF panel** (copy to `urf-proposal/figures/learner4-sim.pdf`) |
+| `learner4.pdf` / `.png` | Full diagnostic |
+| `failure_cost.pdf` / `.png` | Failure-recovery cost sweep |
+| `results.json` | Numbers + Holm tests |
+| `learner4_snippet.tex` | Auto-generated LaTeX prose |
+
+Smoke test: `./scripts/run_learner4.sh --smoke`.
+
+Committed plots under `outputs/learner4/` match the canonical 20×60 run; re-run
+the command above to regenerate them from scratch.
+
+---
+
+# Historical note: Learners 1–3
+
+Earlier experiments tested the order-reduction hypothesis from the 2026-07-01
+meeting with Thrishantha Nanayakkara
+(`meetings/2026-07-01-meeting-thrish.tex`).
+
+**For Learners 1–3: the hypothesis is not supported in the form the meeting
+note states it, and the reason is structural rather than a matter of parameter
+tuning.** Details below. That negative result motivated Learner 4 (different
+scoreboard, same plant), which *is* the evidence used in the URF draft.
 
 ## What is being claimed
 
@@ -227,6 +260,9 @@ for itself in this excitation -- the ARD prior behaving correctly.
     order_reduction/slosh_learner.py   learner 3, EKF on (tau_d, wn, zeta, w)
     order_reduction/experiment3.py     C1-C5, open vs cautious plant-inverse
     order_reduction/plot3.py           slosh_bias_law.pdf, learner3.pdf
+    order_reduction/slow_learner.py    learner 4, first-order EKF on tau_d only
+    order_reduction/experiment4.py     L1-L6, three strategies, three scoreboards
+    order_reduction/plot4.py           learner4.pdf, failure_cost.pdf
 
 ---
 
@@ -367,3 +403,161 @@ than C1/K1/S1." It does not, and it now fails to under conditions
 deliberately built to favour it. The usable content is the slosh plant, the
 bias law surviving a change of transient, emergent recruitment of a
 resonance, and a closed-loop command that is explicitly *not* a task model.
+
+---
+
+# Learner 4: do we co-contract in order to learn, and does it learn faster?
+
+Run `./scripts/run_learner4.sh --trials 60 --seeds 20`.
+
+Learners 1--3 scored a model of the *whole object*. That is why S3/K3/C3
+looked like failures: a stiff first-order learner's impulse error against the
+true third-order cup plateaus near 0.40, even when its estimate of the
+dominant lag is essentially perfect. Learner 4 changes the scoreboard, not
+the plant, and compares the three strategies a person could actually adopt:
+
+1. **Do not co-contract, and identify the whole third-order plant** (L1).
+2. **Co-contract and learn only the slow lag**, treating the transients as
+   noise (L2).
+3. **Co-contract, then relax progressively and learn the whole model**
+   (L5, and L6 which hands the slow lag to a full-order learner explicitly).
+
+L3 and L4 are the controls that say which half of L2 is doing the work.
+Movement time is held at the fast reach (`t_move = 0.25` s) in *every* cell,
+including the staged ones, so the only thing that ever varies is `xi`.
+
+| | learner | stiffness | strategy |
+|---|---|---|---|
+| L1 | third-order EKF | soft throughout | no co-contraction, learn the full model |
+| L2 | first-order EKF | stiff throughout | co-contract, learn the slow model only |
+| L3 | first-order EKF | soft throughout | control: capacity without the filter |
+| L4 | third-order EKF | stiff throughout | control: filter without the restriction |
+| L5 | third-order EKF | staged 3.0 -> 1.3 -> 0.7 | co-contract, then learn the whole model gradually |
+| L6 | first -> third-order | staged | learn the slow lag stiff, then warm-start the full model |
+
+Relaxation in L5/L6 is confidence-gated exactly as K2 was: advance when the
+posterior sd on `log tau_d` falls below 0.04, minimum five trials per stage.
+L6 promotes at the first relaxation, transferring `log tau_d` and its
+posterior variance into a fresh `TwoTimescaleEKF` and nothing else.
+
+## Three scoreboards, because the scoreboard is the whole argument
+
+| name | measure | criterion |
+|---|---|---|
+| slow | `\|tau_hat_d - tau_d\|` | < 0.08 s |
+| full | impulse error of the belief about the whole object | < 0.10 |
+| test | relative error predicting a **common soft, fast probe** | < 0.10 |
+
+The test scoreboard is the fair one and is new. Every condition is asked to
+predict the same deterministic, noise-free soft reach, whatever stiffness it
+happens to be holding, so "I can only do this while braced" shows up as a
+cost rather than being hidden.
+
+## Findings (20 seeds, 60 trials)
+
+| | ttc slow | ttc test | ttc full | peak \|tau_d err\| | test err | obj err | n_eff | failed |
+|---|---|---|---|---|---|---|---|---|
+| L1 soft, 3rd | 6 | **5** | **5** | 0.691 s | 0.007 | 0.031 | 2.18 | 4.0 |
+| L2 stiff, slow-only | **3** | never | never | 0.015 s | 0.216 | 0.405 | 1.00 | 0.0 |
+| L3 soft, slow-only | never | never | never | 0.962 s | 0.175 | 0.338 | 1.00 | 16.3 |
+| L4 stiff, 3rd | **3** | never | never | 0.015 s | 0.215 | 0.404 | 1.00 | 0.0 |
+| L5 staged, 3rd | **3** | 17 | 19 | 0.092 s | 0.007 | 0.030 | 2.18 | 0.0 |
+| L6 staged, slow then recruit | **3** | 8 | 13 | 0.025 s | 0.007 | 0.031 | 2.19 | 0.0 |
+
+Holm-corrected two-sided Mann-Whitney, all on trials to criterion:
+
+| contrast | metric | difference | p |
+|---|---|---|---|
+| L2 vs L1 | slow | -3 (L2 faster) | 3.9e-7 |
+| L5 vs L1 | slow | -3 (L5 faster) | 3.9e-7 |
+| L6 vs L1 | slow | -3 (L6 faster) | 3.9e-7 |
+| L2 vs L4 | slow | 0 (tie) | ns |
+| L2 vs L3 | slow | -58 (L2 faster) | 3.8e-9 |
+| L5 vs L1 | test | +12 (L5 **slower**) | 3.7e-8 |
+| L6 vs L5 | test | -9 (L6 faster) | 1.8e-8 |
+| L5 vs L1 | full | +14 (L5 **slower**) | 6.1e-8 |
+
+**Co-contraction does learn the slow dynamics faster: 3 trials against 6,
+with zero failures against four.** Every co-contracting strategy (L2, L5,
+L6) reaches the slow lag in half the trials the soft learner needs, and
+without a single lost attempt. This is the claim, and it holds.
+
+**The filter is doing the work, not the restriction.** L2 and L4 are an
+exact tie. Once co-contraction has compressed the transients, a full
+third-order EKF prunes itself to `n_eff = 1.00` and learns `tau_d` just as
+fast as a learner that was never offered the extra modes. Order reduction
+is a property of the coupled plant, not a modelling choice.
+
+**Neglecting the transients only works if something has actually removed
+them.** L3 -- the same first-order learner held soft -- never reaches
+criterion, plateaus at +0.218 s of bias (the closed-form floor is
+`(tau_1+tau_2)/rho = 0.150` s, the rest is the fast probe), and loses 16
+trials. Calling the transients "noise" is legitimate *after* the filter and
+a systematic error before it.
+
+**But on the whole object, co-contraction is still not a shortcut.** This is
+the part that does not go the way the hypothesis wants. Tested on the common
+soft probe, L1 arrives in 5 trials, L6 in 8 and L5 in 17. Staging costs
+12 trials, not saves them, and the reason is mechanical: the staged learner
+spends its first ~15 trials in a regime where the transients are not in the
+data at all, so it cannot learn them however good its slow model is. L2,
+which never relaxes, never reaches the soft criterion at all -- it plateaus
+at a test error of 0.216. Co-contraction buys a correct slow model quickly;
+only relaxation buys the transients.
+
+**Warm-starting recovers most of that loss.** L6 beats L5 by 9 trials
+(p = 1.8e-8) purely by handing the converged slow lag to the full-order
+learner rather than letting the ARD prior rediscover it. If a curriculum is
+going to be defended, this is the version to defend: the value is in the
+*transfer* of the slow estimate, not in the staging itself.
+
+## The failure cost is what decides it
+
+`./scripts/run_learner4.sh` also writes `failure_cost.pdf`. The simulation
+charges nothing for a failed attempt beyond losing the rest of that trial's
+data, which is the most generous possible assumption for the deep end. This
+is the sweep `report/theory.tex` pre-registered. Charging a recovery
+overhead of `k` extra trials per failure:
+
+| recovery cost (trials) | 0 | 0.5 | 1 | 2 | 3 | 5 | 8 | 12 |
+|---|---|---|---|---|---|---|---|---|
+| L1 soft | 5.0 | 6.5 | 8.0 | 11.0 | 14.0 | 20.0 | 29.0 | 41.0 |
+| L5 staged | 17.0 | 17.0 | 17.0 | 17.0 | 17.0 | 17.0 | 17.0 | 17.0 |
+| L6 staged, warm-start | 8.0 | 8.0 | 8.0 | 8.0 | 8.0 | 8.0 | 8.0 | 8.0 |
+
+**L6 draws level with L1 as soon as one failed attempt costs a single extra
+trial, and wins outright beyond that. L5 overtakes at a cost of 5.** The
+staged learners are flat because they never fail. So the honest statement is
+conditional, and the condition is cheap to satisfy: *if recovering from a
+dropped attempt costs anything at all, co-contracting to learn is also the
+faster route to the whole model.* For a cup of coffee, a bicycle, or a
+trainee surgeon, a failed attempt costs a great deal more than one trial.
+
+## What to claim and what not to
+
+Claim:
+
+- Co-contraction makes the felt plant first-order, and identifying one lag
+  is twice as fast and far safer than identifying three (L2/L5/L6 vs L1 on
+  the slow scoreboard, p = 3.9e-7).
+- The speed-up comes from the coupling, not from the learner choosing a
+  smaller model (L2 = L4), and the filter is necessary (L3 fails).
+- With any non-zero cost for a failed attempt, the co-contracting route is
+  also the faster route to a full model of the object.
+
+Do not claim:
+
+- "Restricting the learner to first order is what speeds learning." L4
+  refutes that.
+- "Staging is faster than the deep end, full stop." On free failures it is
+  12--14 trials slower. The claim requires the failure cost.
+- "A learner that stays stiff eventually learns the object." L2 never
+  reaches the soft-probe criterion and plateaus at 0.216.
+
+## Sensitivity worth knowing
+
+The 12-trial staging penalty in L5 is set by `MIN_TRIALS_PER_STAGE = 5`
+across three stages: 15 trials of forced dwell before the learner is fully
+soft. That parameter, not the physics, sets the size of the penalty. The
+break-even failure costs above move with it, so quote them as
+order-of-magnitude, not to two significant figures.

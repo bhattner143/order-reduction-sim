@@ -1,0 +1,275 @@
+{
+  "summary": {
+    "n_trials": 60,
+    "n_seeds": {
+      "L1": 20,
+      "L2": 20,
+      "L3": 20,
+      "L4": 20,
+      "L5": 20,
+      "L6": 20
+    },
+    "slow_criterion": 0.08,
+    "test_criterion": 0.1,
+    "failure_cost_sweep": {
+      "L1": {
+        "0": 5.0,
+        "0.5": 6.5,
+        "1": 8.0,
+        "2": 11.0,
+        "3": 14.0,
+        "5": 20.0,
+        "8": 29.0,
+        "12": 41.0
+      },
+      "L2": {
+        "0": 61.0,
+        "0.5": 61.0,
+        "1": 61.0,
+        "2": 61.0,
+        "3": 61.0,
+        "5": 61.0,
+        "8": 61.0,
+        "12": 61.0
+      },
+      "L3": {
+        "0": 61.0,
+        "0.5": 66.0,
+        "1": 71.0,
+        "2": 81.0,
+        "3": 91.0,
+        "5": 111.0,
+        "8": 141.0,
+        "12": 181.0
+      },
+      "L4": {
+        "0": 61.0,
+        "0.5": 61.0,
+        "1": 61.0,
+        "2": 61.0,
+        "3": 61.0,
+        "5": 61.0,
+        "8": 61.0,
+        "12": 61.0
+      },
+      "L5": {
+        "0": 17.0,
+        "0.5": 17.0,
+        "1": 17.0,
+        "2": 17.0,
+        "3": 17.0,
+        "5": 17.0,
+        "8": 17.0,
+        "12": 17.0
+      },
+      "L6": {
+        "0": 8.0,
+        "0.5": 8.0,
+        "1": 8.0,
+        "2": 8.0,
+        "3": 8.0,
+        "5": 8.0,
+        "8": 8.0,
+        "12": 8.0
+      }
+    },
+    "break_even_failure_cost": {
+      "L5 overtakes L1": 5.0,
+      "L6 overtakes L1": 1.0
+    },
+    "labels": {
+      "L1": "no co-contraction, full model",
+      "L2": "co-contract, slow model only",
+      "L3": "control: capacity without filter",
+      "L4": "control: filter without restriction",
+      "L5": "co-contract, then learn the whole model gradually",
+      "L6": "learn the slow lag stiff, then warm-start the full model"
+    },
+    "ttc_slow_median": {
+      "L1": 6.0,
+      "L2": 3.0,
+      "L3": 61.0,
+      "L4": 3.0,
+      "L5": 3.0,
+      "L6": 3.0
+    },
+    "ttc_full_median": {
+      "L1": 5.0,
+      "L2": 61.0,
+      "L3": 61.0,
+      "L4": 61.0,
+      "L5": 19.0,
+      "L6": 13.0
+    },
+    "ttc_test_median": {
+      "L1": 5.0,
+      "L2": 61.0,
+      "L3": 61.0,
+      "L4": 61.0,
+      "L5": 17.0,
+      "L6": 8.0
+    },
+    "reached_slow": {
+      "L1": 1.0,
+      "L2": 1.0,
+      "L3": 0.0,
+      "L4": 1.0,
+      "L5": 1.0,
+      "L6": 1.0
+    },
+    "reached_test": {
+      "L1": 1.0,
+      "L2": 0.0,
+      "L3": 0.0,
+      "L4": 0.0,
+      "L5": 1.0,
+      "L6": 1.0
+    },
+    "err_final": {
+      "L1": 0.030525152574157388,
+      "L2": 0.4048645424656403,
+      "L3": 0.33790082013322237,
+      "L4": 0.40443728305054905,
+      "L5": 0.029921613565885283,
+      "L6": 0.030623309538559955
+    },
+    "slow_err_final": {
+      "L1": 0.005369941077525428,
+      "L2": 0.002877671204091668,
+      "L3": 0.13104159625472334,
+      "L4": 0.0026731785564365266,
+      "L5": 0.008184678291547842,
+      "L6": 0.0067029266779678465
+    },
+    "test_err_final": {
+      "L1": 0.00682667854244599,
+      "L2": 0.21569911151265486,
+      "L3": 0.17522969698771954,
+      "L4": 0.21535397182577054,
+      "L5": 0.007109986536302363,
+      "L6": 0.0073540211835542504
+    },
+    "bias_final": {
+      "L1": -0.006922293361344534,
+      "L2": 0.000865622534715893,
+      "L3": 0.217661055643798,
+      "L4": 0.0003425247329036374,
+      "L5": -0.011077582372419181,
+      "L6": -0.012108503677492333
+    },
+    "peak_bias": {
+      "L1": 0.6913365325658142,
+      "L2": 0.015121703858813784,
+      "L3": 0.9619069471749652,
+      "L4": 0.015143178334130092,
+      "L5": 0.09239796675922474,
+      "L6": 0.0253326710706136
+    },
+    "neff_final": {
+      "L1": 2.1842403903982808,
+      "L2": 1.0,
+      "L3": 1.0,
+      "L4": 1.0000003873121255,
+      "L5": 2.1793107391369846,
+      "L6": 2.1894871417013997
+    },
+    "xi_final": {
+      "L1": 0.7,
+      "L2": 3.0,
+      "L3": 0.7,
+      "L4": 3.0,
+      "L5": 0.7,
+      "L6": 0.7
+    },
+    "n_failed": {
+      "L1": 3.95,
+      "L2": 0.0,
+      "L3": 16.3,
+      "L4": 0.0,
+      "L5": 0.0,
+      "L6": 0.0
+    },
+    "tests": [
+      {
+        "contrast": "L2 vs L1",
+        "metric": "ttc_slow",
+        "question": "does co-contracting reach the slow lag sooner?",
+        "median_diff": -3.0,
+        "direction": "L2 faster",
+        "p": 9.716662842104585e-08,
+        "p_holm": 3.886665136841834e-07,
+        "stars": "***"
+      },
+      {
+        "contrast": "L5 vs L1",
+        "metric": "ttc_slow",
+        "question": "does staged co-contraction reach it sooner?",
+        "median_diff": -3.0,
+        "direction": "L5 faster",
+        "p": 9.716662842104585e-08,
+        "p_holm": 3.886665136841834e-07,
+        "stars": "***"
+      },
+      {
+        "contrast": "L6 vs L1",
+        "metric": "ttc_slow",
+        "question": "does a warm-started full learner reach it sooner?",
+        "median_diff": -3.0,
+        "direction": "L6 faster",
+        "p": 9.716662842104585e-08,
+        "p_holm": 3.886665136841834e-07,
+        "stars": "***"
+      },
+      {
+        "contrast": "L2 vs L4",
+        "metric": "ttc_slow",
+        "question": "is the speed-up the filter or the restriction?",
+        "median_diff": 0.0,
+        "direction": "tie",
+        "p": 1.0,
+        "p_holm": 1.0,
+        "stars": "ns"
+      },
+      {
+        "contrast": "L2 vs L3",
+        "metric": "ttc_slow",
+        "question": "is the filter necessary for a slow-only learner?",
+        "median_diff": -58.0,
+        "direction": "L2 faster",
+        "p": 4.682682358742053e-10,
+        "p_holm": 3.746145886993642e-09,
+        "stars": "***"
+      },
+      {
+        "contrast": "L5 vs L1",
+        "metric": "ttc_test",
+        "question": "on the common soft probe, is staging faster?",
+        "median_diff": 12.0,
+        "direction": "L5 slower",
+        "p": 6.158060850708265e-09,
+        "p_holm": 3.6948365104249594e-08,
+        "stars": "***"
+      },
+      {
+        "contrast": "L6 vs L5",
+        "metric": "ttc_test",
+        "question": "does warm-starting beat plain staging?",
+        "median_diff": -9.0,
+        "direction": "L6 faster",
+        "p": 2.6322132293873707e-09,
+        "p_holm": 1.8425492605711596e-08,
+        "stars": "***"
+      },
+      {
+        "contrast": "L5 vs L1",
+        "metric": "ttc_full",
+        "question": "on the full model, is staging faster?",
+        "median_diff": 14.0,
+        "direction": "L5 slower",
+        "p": 1.2170719456019007e-08,
+        "p_holm": 6.085359728009503e-08,
+        "stars": "***"
+      }
+    ]
+  }
+}

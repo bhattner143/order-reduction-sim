@@ -14,3 +14,5 @@ outputs/_scratch/
 *.synctex.gz
 
 outputs/_smoke/
+outputs/_smoke_learner*/
+outputs/learner2/source_pdfs/
